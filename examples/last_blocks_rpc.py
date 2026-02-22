@@ -35,7 +35,11 @@ async def main():
         params=ingest.evm.Query(
             from_block=18_000_000,
             to_block=18_000_010,
-            include_all_blocks=True,
+            transactions=[
+                ingest.evm.TransactionRequest(
+                    include_blocks=True,
+                ),
+            ],
             fields=ingest.evm.Fields(
                 block=ingest.evm.BlockFields(
                     number=True,
