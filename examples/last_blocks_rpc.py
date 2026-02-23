@@ -27,7 +27,7 @@ async def main():
         kind=ingest.ProviderKind.RPC,
         url=url,
         stop_on_head=True,
-        max_block_range=10,
+        batch_size=10,
     )
 
     query = ingest.Query(
@@ -51,12 +51,17 @@ async def main():
                     gas_used=True,
                     base_fee_per_gas=True,
                     size=True,
+                    withdrawals=True,
                 ),
                 transaction=ingest.evm.TransactionFields(
                     hash=True,
                     from_=True,
                     to=True,
                     value=True,
+                    cumulative_gas_used=True,
+                    effective_gas_price=True,
+                    gas_used=True,
+                    contract_address=True,
                 )
             ),
         ),

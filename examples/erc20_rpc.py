@@ -31,7 +31,7 @@ async def main():
         kind=ingest.ProviderKind.RPC,
         url="https://mainnet.gateway.tenderly.co",
         stop_on_head=True,
-        max_block_range=2000,
+        batch_size=2000,
     )
 
     query = ingest.Query(
