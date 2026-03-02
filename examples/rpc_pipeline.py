@@ -1,26 +1,13 @@
-# This example shows a simple pipeline that ingests traces for a range of blocks
-# directly from an Ethereum RPC node.
-#
-# IMPORTANT: The provider must support block-level tracing:
-#   - trace_block         → Erigon, Nethermind, Reth, Alchemy, QuickNode, Tenderly (authenticated)
-#   - debug_traceBlockByNumber → Geth, Reth, Erigon, Alchemy, QuickNode, Infura, Tenderly (authenticated)
-#
-# Fetching traces per transaction is not supported — use a node with block-level
-# trace support or switch to SQD Network / HyperSync.
-#
-# NOTE: The unauthenticated Tenderly public gateway (mainnet.gateway.tenderly.co)
-# does NOT support trace methods. Use a project-specific authenticated URL:
-#   https://mainnet.gateway.tenderly.co/<YOUR_ACCESS_KEY>
-# or a provider that exposes trace APIs without authentication (e.g. a local Reth node).
-#
+# This example shows a simple pipeline that ingests the last 10 blocks
+# directly from an Ethereum RPC node (e.g. a local node or Alchemy/Infura endpoint).
 # Cherry is published to PyPI as cherry-etl and cherry-core.
 # To install it, run: pip install cherry-etl cherry-core
 # Or with uv: uv pip install cherry-etl cherry-core
 
 # You can run this script with:
-# RPC_URL=https://mainnet.gateway.tenderly.co/<YOUR_ACCESS_KEY> uv run examples/last_blocks_traces_rpc.py
+# RPC_URL=https://mainnet.gateway.tenderly.co uv run examples/last_blocks_rpc.py
 
-# After run, the parquet files are written to data/
+# After run, the parquet files are written to data/blocks/
 
 import asyncio
 import os
@@ -34,27 +21,60 @@ DATA_PATH = str(Path.cwd() / "data")
 Path(DATA_PATH).mkdir(parents=True, exist_ok=True)
 
 async def main():
-    url = os.environ.get("RPC_URL", "https://mainnet.gateway.tenderly.co/6c6oefpBifI6lWPjYzklrk")
+    url = os.environ.get("RPC_URL", "https://mainnet.gateway.tenderly.co")
 
     provider = ingest.ProviderConfig(
         kind=ingest.ProviderKind.RPC,
         url=url,
         stop_on_head=True,
-        batch_size=10,
-        # Trace method: "trace_block" (Erigon/Nethermind/Reth, default) or
-        # "debug_trace_block_by_number" (Geth/Reth/Erigon).
-        trace_method="trace_block",
     )
 
     query = ingest.Query(
         kind=ingest.QueryKind.EVM,
         params=ingest.evm.Query(
             from_block=18_000_000,
-            to_block=18_000_002,
-            traces=[
-                ingest.evm.TraceRequest(),
+            to_block=18_001_000,
+            transactions=[
+                ingest.evm.TransactionRequest(
+                    include_blocks=True,
+                    include_logs=True,
+                    include_traces=True,
+                ),
             ],
             fields=ingest.evm.Fields(
+                block=ingest.evm.BlockFields(
+                    number=True,
+                    hash=True,
+                    parent_hash=True,
+                    timestamp=True,
+                    miner=True,
+                    gas_limit=True,
+                    gas_used=True,
+                    base_fee_per_gas=True,
+                    size=True,
+                    withdrawals=True,
+                ),
+                transaction=ingest.evm.TransactionFields(
+                    hash=True,
+                    from_=True,
+                    to=True,
+                    value=True,
+                    cumulative_gas_used=True,
+                    effective_gas_price=True,
+                    gas_used=True,
+                    contract_address=True,
+                ),
+                log=ingest.evm.LogFields(
+                    block_number=True,
+                    transaction_hash=True,
+                    log_index=True,
+                    address=True,
+                    topic0=True,
+                    topic1=True,
+                    topic2=True,
+                    topic3=True,
+                    data=True,
+                ),
                 trace=ingest.evm.TraceFields(
                     from_=True,
                     to=True,
