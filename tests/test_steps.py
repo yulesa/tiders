@@ -1,6 +1,6 @@
-from cherry_etl import steps as cs
-from cherry_etl import config as cc
-from cherry_etl import utils
+from tiders_etl import steps as cs
+from tiders_etl import config as cc
+from tiders_etl import utils
 import pyarrow as pa
 import base58
 import binascii

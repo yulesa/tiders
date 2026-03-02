@@ -14,13 +14,21 @@ class Writer(DataWriter):
     def __init__(self, config: PyArrowDatasetWriterConfig):
         self.config = deepcopy(config)
         self.config.base_dir = self.config.base_dir.rstrip("/")
+        self._counters: Dict[str, int] = {}
+
+    def _next_basename_template(self, table_name: str) -> str:
+        counter = self._counters.get(table_name, 0)
+        self._counters[table_name] = counter + 1
+        base = self.config.basename_template or "part-{i}.parquet"
+        stem, _, ext = base.rpartition(".")
+        return f"{stem}-{counter}.{ext}"
 
     async def _write_table(self, table_name: str, table_data: pa.Table) -> None:
         await asyncio.to_thread(
             pa_dataset.write_dataset,
             data=table_data,
             base_dir=f"{self.config.base_dir}/{table_name}",
-            basename_template=self.config.basename_template,
+            basename_template=self._next_basename_template(table_name),
             format="parquet",
             partitioning=self.config.partitioning.get(table_name, None),
             partitioning_flavor=self.config.partitioning_flavor.get(table_name, None),

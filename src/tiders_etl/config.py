@@ -3,8 +3,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Callable
 
-from cherry_core.ingest import ProviderConfig, Query
-from cherry_core.svm_decode import InstructionSignature, LogSignature
+from tiders_core.ingest import ProviderConfig, Query
+from tiders_core.svm_decode import InstructionSignature, LogSignature
 from clickhouse_connect.driver.asyncclient import AsyncClient as ClickHouseClient
 from pyiceberg.catalog import Catalog as IcebergCatalog
 import deltalake

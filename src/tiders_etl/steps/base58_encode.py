@@ -2,9 +2,8 @@ from typing import Dict
 from copy import deepcopy
 
 from ..config import Base58EncodeConfig
-from cherry_core import base58_encode
+from tiders_core import base58_encode
 import pyarrow as pa
-from .util import arrow_schema_binary_to_string
 
 
 def execute(
@@ -22,7 +21,6 @@ def execute(
         for batch in batches:
             out_batches.append(base58_encode(batch))
 
-        new_schema = arrow_schema_binary_to_string(table.schema)
-        data[table_name] = pa.Table.from_batches(out_batches, schema=new_schema)
+        data[table_name] = pa.Table.from_batches(out_batches)
 
     return data

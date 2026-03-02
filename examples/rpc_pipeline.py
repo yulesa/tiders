@@ -1,8 +1,8 @@
 # This example shows a simple pipeline that ingests the last 10 blocks
 # directly from an Ethereum RPC node (e.g. a local node or Alchemy/Infura endpoint).
-# Cherry is published to PyPI as cherry-etl and cherry-core.
-# To install it, run: pip install cherry-etl cherry-core
-# Or with uv: uv pip install cherry-etl cherry-core
+# Tiders is published to PyPI as tiders-etl and tiders-core.
+# To install it, run: pip install tiders-etl tiders-core
+# Or with uv: uv pip install tiders-etl tiders-core
 
 # You can run this script with:
 # RPC_URL=https://mainnet.gateway.tenderly.co uv run examples/last_blocks_rpc.py
@@ -13,9 +13,9 @@ import asyncio
 import os
 from pathlib import Path
 
-from cherry_core import ingest
-from cherry_etl import config as cc
-from cherry_etl import run_pipeline
+from tiders_core import ingest
+from tiders_etl import config as cc
+from tiders_etl import run_pipeline
 
 DATA_PATH = str(Path.cwd() / "data")
 Path(DATA_PATH).mkdir(parents=True, exist_ok=True)
@@ -27,18 +27,18 @@ async def main():
         kind=ingest.ProviderKind.RPC,
         url=url,
         stop_on_head=True,
+        batch_size=10, 
     )
 
     query = ingest.Query(
         kind=ingest.QueryKind.EVM,
         params=ingest.evm.Query(
             from_block=18_000_000,
-            to_block=18_001_000,
+            to_block=18_000_100,
             transactions=[
                 ingest.evm.TransactionRequest(
                     include_blocks=True,
                     include_logs=True,
-                    include_traces=True,
                 ),
             ],
             fields=ingest.evm.Fields(
@@ -74,33 +74,6 @@ async def main():
                     topic2=True,
                     topic3=True,
                     data=True,
-                ),
-                trace=ingest.evm.TraceFields(
-                    from_=True,
-                    to=True,
-                    call_type=True,
-                    gas=True,
-                    input=True,
-                    init=True,
-                    value=True,
-                    author=True,
-                    reward_type=True,
-                    block_hash=True,
-                    block_number=True,
-                    address=True,
-                    code=True,
-                    gas_used=True,
-                    output=True,
-                    subtraces=True,
-                    trace_address=True,
-                    transaction_hash=True,
-                    transaction_position=True,
-                    type_=True,
-                    error=True,
-                    sighash=True,
-                    action_address=True,
-                    balance=True,
-                    refund_address=True,
                 ),
             ),
         ),

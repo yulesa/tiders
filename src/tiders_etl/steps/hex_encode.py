@@ -2,9 +2,8 @@ from typing import Dict
 from copy import deepcopy
 
 from ..config import HexEncodeConfig
-from cherry_core import hex_encode, prefix_hex_encode
+from tiders_core import hex_encode, prefix_hex_encode
 import pyarrow as pa
-from .util import arrow_schema_binary_to_string
 
 
 def execute(data: Dict[str, pa.Table], config: HexEncodeConfig) -> Dict[str, pa.Table]:
@@ -22,7 +21,6 @@ def execute(data: Dict[str, pa.Table], config: HexEncodeConfig) -> Dict[str, pa.
         for batch in batches:
             out_batches.append(decode_fn(batch))
 
-        new_schema = arrow_schema_binary_to_string(table.schema)
-        data[table_name] = pa.Table.from_batches(out_batches, schema=new_schema)
+        data[table_name] = pa.Table.from_batches(out_batches)
 
     return data

@@ -2,7 +2,7 @@ from typing import Dict
 from copy import deepcopy
 
 import pyarrow as pa
-from cherry_core import cast, cast_schema
+from tiders_core import cast, cast_schema
 from ..config import CastConfig
 
 
