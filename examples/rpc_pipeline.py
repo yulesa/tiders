@@ -5,13 +5,19 @@
 # Or with uv: uv pip install tiders-etl tiders-core
 
 # You can run this script with:
-# RPC_URL=https://mainnet.gateway.tenderly.co uv run examples/last_blocks_rpc.py
+# uv run examples/rpc_pipeline.py
+# uv run examples/rpc_pipeline.py https://your-rpc-url
+# RPC_URL priority: command-line arg > env var > examples/.env > default fallback.
 
 # After run, the parquet files are written to data/blocks/
 
 import asyncio
 import os
+import sys
 from pathlib import Path
+
+from dotenv import load_dotenv
+load_dotenv(Path(__file__).parent / ".env")
 
 from tiders_core import ingest
 from tiders_etl import config as cc
@@ -21,7 +27,11 @@ DATA_PATH = str(Path.cwd() / "data")
 Path(DATA_PATH).mkdir(parents=True, exist_ok=True)
 
 async def main():
-    url = os.environ.get("RPC_URL", "https://mainnet.gateway.tenderly.co")
+    url = (
+        sys.argv[1]
+        if len(sys.argv) > 1
+        else os.environ.get("RPC_URL", "https://mainnet.gateway.tenderly.co")
+    )
 
     provider = ingest.ProviderConfig(
         kind=ingest.ProviderKind.RPC,
