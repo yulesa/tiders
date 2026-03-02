@@ -1,18 +1,18 @@
 [project]
-name = "cherry-etl"
+name = "tiders-etl"
 version = "0.9.0"
 description = "Library for building blockchain pipelines"
-repository = "https://github.com/steelcake/cherry"
-homepage = "https://github.com/steelcake/cherry"
+repository = "https://github.com/yulesa/tiders"
+homepage = "https://github.com/yulesa/tiders"
 readme = "README.md"
 license = "MIT OR Apache-2.0"
 authors = [
   { name = "Ozgur Akkurt", email = "ozgur@steelcake.com" },
-  { name = "Yule Andrade", email = "yule@steelcake.com" },
+  { name = "Yule Andrade", email = "yulesa@gmail.com" },
 ]
 requires-python = ">=3.11"
 dependencies = [
-    "cherry-core",
+    "tiders-core",
     "pyarrow>=22.0.0",
     "sqlalchemy>=2.0.38",
     "psycopg2-binary>=2.9.0",
@@ -34,7 +34,7 @@ dev = [
 ]
 
 [tool.uv.sources]
-cherry-core = { path = "../cherry-core/python", editable = true }
+tiders-core = { path = "../tiders-core/python", editable = true }
 
 [build-system]
 requires = ["hatchling"]

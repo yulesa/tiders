@@ -1,6 +1,6 @@
-# Cherry is published to PyPI as cherry-etl and cherry-core.
-# To install it, run: pip install cherry-etl cherry-core
-# Or with uv: uv pip install cherry-etl cherry-core
+# Tiders is published to PyPI as tiders-etl and tiders-core.
+# To install it, run: pip install tiders-etl tiders-core
+# Or with uv: uv pip install tiders-etl tiders-core
 
 # You can run this script with:
 # uv run examples/end_to_end/jup_swap.py --from_block 330447751 --to_block 330447751
@@ -19,16 +19,16 @@ from typing import Optional, Any
 
 import duckdb
 
-from cherry_etl import config as cc
-from cherry_etl.pipeline import run_pipeline
-from cherry_core.svm_decode import InstructionSignature, ParamInput, DynType, FixedArray
-from cherry_core.ingest import (
+from tiders_etl import config as cc
+from tiders_etl.pipeline import run_pipeline
+from tiders_core.svm_decode import InstructionSignature, ParamInput, DynType, FixedArray
+from tiders_core.ingest import (
     ProviderConfig,
     ProviderKind,
     QueryKind,
     Query as IngestQuery,
 )
-from cherry_core.ingest.svm import (
+from tiders_core.ingest.svm import (
     Query,
     Fields,
     InstructionFields,

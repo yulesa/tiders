@@ -1,17 +1,16 @@
-# cherry 
+# tiders 
 
-[![PyPI](https://img.shields.io/badge/PyPI-lightgreen?style=for-the-badge&logo=pypi&labelColor=white)](https://pypi.org/project/cherry-etl/)
-[![Telegram](https://img.shields.io/badge/Telegram-darkgray?style=for-the-badge&logo=telegram)](https://t.me/cherry_etl)
-[![Documentation](https://img.shields.io/badge/documentation-blue?style=for-the-badge&logo=readthedocs)](https://steelcake.github.io/cherry-docs/)
-[![GitHub](https://img.shields.io/badge/github-black?style=for-the-badge&logo=github)](https://github.com/steelcake/cherry)
+[![PyPI](https://img.shields.io/badge/PyPI-lightgreen?style=for-the-badge&logo=pypi&labelColor=white)](https://pypi.org/project/tiders-etl/)
+[![Telegram](https://img.shields.io/badge/Telegram-darkgray?style=for-the-badge&logo=telegram)](https://t.me/tiders_etl)
+[![GitHub](https://img.shields.io/badge/github-black?style=for-the-badge&logo=github)](https://github.com/yulesa/tiders)
 
-Cherry is a python library for building blockchain data pipelines.
+tiders is a python library for building blockchain data pipelines.
 
 It is designed to make building production-ready blockchain data pipelines easy.
 
 ## Getting Started
 
-See [getting started section](https://steelcake.github.io/cherry-docs/getting_started.html) of the docs.
+See [getting started section](https://yulesa.github.io/tiders-docs/getting_started.html) of the docs.
 
 ## Features
 
@@ -45,7 +44,6 @@ See [getting started section](https://steelcake.github.io/cherry-docs/getting_st
 ## Usage examples
 
 - [Examples](examples)
-- [Documentation](https://steelcake.github.io/cherry-docs/)
 
 ## Logging
 
@@ -67,7 +65,7 @@ This repo uses `uv` for development.
 - Run type checks with `uv run pyright`
 - Run the tests with `uv run pytest`
 
-Core libraries we use for ingesting/decoding/validating/transforming blockchain data are implemented in [cherry-core](https://github.com/steelcake/cherry-core) repo.
+Core libraries we use for ingesting/decoding/validating/transforming blockchain data are implemented in [tiders-core](https://github.com/yulesa/tiders-core) repo.
 
 ## License
 
@@ -85,11 +83,5 @@ at your option.
 Unless you explicitly state otherwise, any contribution intentionally submitted
 for inclusion in the work by you, as defined in the Apache-2.0 license, shall be
 dual licensed as above, without any additional terms or conditions.
-
-## Sponsors
-
-[<img src="https://steelcake.com/envio-logo.png" width="150px" />](https://envio.dev)
-[<img src="https://steelcake.com/sqd-logo.png" width="165px" />](https://sqd.ai)
-[<img src="https://steelcake.com/space-operator-logo.webp" height="75px" />](https://linktr.ee/spaceoperator)
 
 

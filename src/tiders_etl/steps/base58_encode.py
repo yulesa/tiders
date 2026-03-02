@@ -1,15 +1,14 @@
 from typing import Dict
 from copy import deepcopy
 
-from cherry_core import u256_to_binary
+from ..config import Base58EncodeConfig
+from tiders_core import base58_encode
 import pyarrow as pa
-
-from cherry_etl.config import U256ToBinaryConfig
-from .util import arrow_schema_cast_by_type
+from .util import arrow_schema_binary_to_string
 
 
 def execute(
-    data: Dict[str, pa.Table], config: U256ToBinaryConfig
+    data: Dict[str, pa.Table], config: Base58EncodeConfig
 ) -> Dict[str, pa.Table]:
     data = deepcopy(data)
 
@@ -21,11 +20,9 @@ def execute(
         out_batches = []
 
         for batch in batches:
-            out_batches.append(u256_to_binary(batch))
+            out_batches.append(base58_encode(batch))
 
-        new_schema = arrow_schema_cast_by_type(
-            table.schema, pa.decimal256(76, 0), pa.binary()
-        )
+        new_schema = arrow_schema_binary_to_string(table.schema)
         data[table_name] = pa.Table.from_batches(out_batches, schema=new_schema)
 
     return data

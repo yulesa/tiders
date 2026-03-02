@@ -1,7 +1,7 @@
 from typing import Dict
 from copy import deepcopy
 
-from cherry_core import svm_decode_instructions, instruction_signature_to_arrow_schema
+from tiders_core import svm_decode_instructions, instruction_signature_to_arrow_schema
 from ..config import SvmDecodeInstructionsConfig
 import pyarrow as pa
 

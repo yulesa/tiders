@@ -18,7 +18,7 @@ from .config import (
     SvmDecodeLogsConfig,
 )
 from typing import Dict, List, Optional
-from cherry_core.ingest import start_stream
+from tiders_core.ingest import start_stream
 import pyarrow as pa
 from .writers.writer import create_writer
 from . import steps as step_def

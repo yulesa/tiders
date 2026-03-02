@@ -1,7 +1,7 @@
 from typing import Dict
 from copy import deepcopy
 
-from cherry_core import evm_decode_events, evm_event_signature_to_arrow_schema
+from tiders_core import evm_decode_events, evm_event_signature_to_arrow_schema
 from ..config import EvmDecodeEventsConfig
 import pyarrow as pa
 

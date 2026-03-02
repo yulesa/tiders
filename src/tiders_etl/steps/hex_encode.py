@@ -2,7 +2,7 @@ from typing import Dict
 from copy import deepcopy
 
 from ..config import HexEncodeConfig
-from cherry_core import hex_encode, prefix_hex_encode
+from tiders_core import hex_encode, prefix_hex_encode
 import pyarrow as pa
 from .util import arrow_schema_binary_to_string
 

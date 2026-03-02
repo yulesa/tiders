@@ -1,8 +1,8 @@
 # This example shows a simple pipeline that ingests the last 10 blocks
 # directly from an Ethereum RPC node (e.g. a local node or Alchemy/Infura endpoint).
-# Cherry is published to PyPI as cherry-etl and cherry-core.
-# To install it, run: pip install cherry-etl cherry-core
-# Or with uv: uv pip install cherry-etl cherry-core
+# Tiders is published to PyPI as tiders-etl and tiders-core.
+# To install it, run: pip install tiders-etl tiders-core
+# Or with uv: uv pip install tiders-etl tiders-core
 
 # You can run this script with:
 # RPC_URL=https://mainnet.gateway.tenderly.co uv run examples/last_blocks_rpc.py
@@ -13,9 +13,9 @@ import asyncio
 import os
 from pathlib import Path
 
-from cherry_core import ingest
-from cherry_etl import config as cc
-from cherry_etl import run_pipeline
+from tiders_core import ingest
+from tiders_etl import config as cc
+from tiders_etl import run_pipeline
 
 DATA_PATH = str(Path.cwd() / "data")
 Path(DATA_PATH).mkdir(parents=True, exist_ok=True)
