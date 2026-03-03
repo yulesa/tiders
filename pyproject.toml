@@ -1,6 +1,6 @@
 [project]
-name = "tiders-etl"
-version = "0.9.0"
+name = "tiders"
+version = "0.1.0"
 description = "Library for building blockchain pipelines"
 repository = "https://github.com/yulesa/tiders"
 homepage = "https://github.com/yulesa/tiders"
