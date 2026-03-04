@@ -21,6 +21,7 @@ jobs:
         with:
           python-version: "3.11"
       - uses: astral-sh/setup-uv@v3
+      - run: sudo apt-get update && sudo apt-get install -y capnproto
       - name: Install dependencies
         run: uv sync
       - name: Ruff check
