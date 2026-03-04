@@ -20,8 +20,8 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent / ".env")
 
 from tiders_core import ingest
-from tiders_etl import config as cc
-from tiders_etl import run_pipeline
+from tiders import config as cc
+from tiders import run_pipeline
 
 DATA_PATH = str(Path.cwd() / "data")
 Path(DATA_PATH).mkdir(parents=True, exist_ok=True)

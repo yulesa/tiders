@@ -4,7 +4,7 @@ from copy import deepcopy
 from tiders_core import u256_to_binary, u256_column_to_binary
 import pyarrow as pa
 
-from tiders_etl.config import U256ToBinaryConfig
+from tiders.config import U256ToBinaryConfig
 
 
 def _convert_array(arr: pa.Array) -> pa.Array:

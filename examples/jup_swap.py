@@ -19,8 +19,8 @@ from typing import Optional, Any
 
 import duckdb
 
-from tiders_etl import config as cc
-from tiders_etl.pipeline import run_pipeline
+from tiders import config as cc
+from tiders.pipeline import run_pipeline
 from tiders_core.svm_decode import InstructionSignature, ParamInput, DynType, FixedArray
 from tiders_core.ingest import (
     ProviderConfig,

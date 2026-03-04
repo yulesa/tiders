@@ -11,8 +11,8 @@
 # SELECT * FROM transfers LIMIT 3;
 
 import pyarrow as pa
-from tiders_etl import config as cc
-from tiders_etl import run_pipeline
+from tiders import config as cc
+from tiders import run_pipeline
 from tiders_core import ingest, evm_signature_to_topic0
 import logging
 import os
