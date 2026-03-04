@@ -1,8 +1,8 @@
 # This example shows a simple pipeline that ingests the last 10 blocks
 # directly from an Ethereum RPC node (e.g. a local node or Alchemy/Infura endpoint).
-# Tiders is published to PyPI as tiders-etl and tiders-core.
-# To install it, run: pip install tiders-etl tiders-core
-# Or with uv: uv pip install tiders-etl tiders-core
+# Tiders is published to PyPI as tiders and tiders-core.
+# To install it, run: pip install tiders tiders-core
+# Or with uv: uv pip install tiders tiders-core
 
 # You can run this script with:
 # uv run examples/rpc_pipeline.py
@@ -17,14 +17,16 @@ import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
+
 load_dotenv(Path(__file__).parent / ".env")
 
-from tiders_core import ingest
-from tiders_etl import config as cc
-from tiders_etl import run_pipeline
+from tiders_core import ingest  # noqa: E402
+from tiders import config as cc  # noqa: E402
+from tiders import run_pipeline  # noqa: E402
 
 DATA_PATH = str(Path.cwd() / "data")
 Path(DATA_PATH).mkdir(parents=True, exist_ok=True)
+
 
 async def main():
     url = (
@@ -37,7 +39,7 @@ async def main():
         kind=ingest.ProviderKind.RPC,
         url=url,
         stop_on_head=True,
-        batch_size=10, 
+        batch_size=10,
     )
 
     query = ingest.Query(

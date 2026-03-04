@@ -1,7 +1,7 @@
 # This example shows a simple custom pipeline that ingests and decodes erc20 transfers into duckdb
-# Tiders is published to PyPI as tiders-etl and tiders-core.
-# To install it, run: pip install tiders-etl tiders-core
-# Or with uv: uv pip install tiders-etl tiders-core
+# Tiders is published to PyPI as tiders and tiders-core.
+# To install it, run: pip install tiders tiders-core
+# Or with uv: uv pip install tiders tiders-core
 
 # You can run this script with:
 # uv run examples/end_to_end/erc20_custom.py --provider hypersync
@@ -11,8 +11,8 @@
 # SELECT * FROM transfers LIMIT 3;
 
 import pyarrow as pa
-from tiders_etl import config as cc
-from tiders_etl import run_pipeline
+from tiders import config as cc
+from tiders import run_pipeline
 from tiders_core import ingest, evm_signature_to_topic0
 import logging
 import os

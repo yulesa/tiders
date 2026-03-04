@@ -4,7 +4,7 @@ from copy import deepcopy
 from tiders_core import u256_to_binary, u256_column_to_binary
 import pyarrow as pa
 
-from tiders_etl.config import U256ToBinaryConfig
+from tiders.config import U256ToBinaryConfig
 
 
 def _convert_array(arr: pa.Array) -> pa.Array:
@@ -19,15 +19,23 @@ def _convert_array(arr: pa.Array) -> pa.Array:
             child = _convert_array(arr.field(i))
             new_fields.append(pa.field(f.name, child.type))
             new_arrays.append(child)
-        return pa.StructArray.from_arrays(new_arrays, fields=new_fields, mask=arr.is_null())
+        return pa.StructArray.from_arrays(
+            new_arrays, fields=new_fields, mask=arr.is_null()
+        )
     if pa.types.is_list(arr.type):
         converted_values = _convert_array(arr.values)
         new_type = pa.list_(pa.field(arr.type.value_field.name, converted_values.type))
-        return pa.ListArray.from_arrays(arr.offsets, converted_values, mask=arr.is_null(), type=new_type)
+        return pa.ListArray.from_arrays(
+            arr.offsets, converted_values, mask=arr.is_null(), type=new_type
+        )
     if pa.types.is_large_list(arr.type):
         converted_values = _convert_array(arr.values)
-        new_type = pa.large_list(pa.field(arr.type.value_field.name, converted_values.type))
-        return pa.LargeListArray.from_arrays(arr.offsets, converted_values, mask=arr.is_null(), type=new_type)
+        new_type = pa.large_list(
+            pa.field(arr.type.value_field.name, converted_values.type)
+        )
+        return pa.LargeListArray.from_arrays(
+            arr.offsets, converted_values, mask=arr.is_null(), type=new_type
+        )
     return arr
 
 

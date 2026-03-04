@@ -1,6 +1,6 @@
-# Tiders is published to PyPI as tiders-etl and tiders-core.
-# To install it, run: pip install tiders-etl tiders-core
-# Or with uv: uv pip install tiders-etl tiders-core
+# Tiders is published to PyPI as tiders and tiders-core.
+# To install it, run: pip install tiders tiders-core
+# Or with uv: uv pip install tiders tiders-core
 
 # You can run this script with:
 # uv run examples/end_to_end/jup_swap.py --from_block 330447751 --to_block 330447751
@@ -19,8 +19,8 @@ from typing import Optional, Any
 
 import duckdb
 
-from tiders_etl import config as cc
-from tiders_etl.pipeline import run_pipeline
+from tiders import config as cc
+from tiders.pipeline import run_pipeline
 from tiders_core.svm_decode import InstructionSignature, ParamInput, DynType, FixedArray
 from tiders_core.ingest import (
     ProviderConfig,
