@@ -33,9 +33,6 @@ dev = [
     "pyright>=1.1.400",
 ]
 
-[tool.uv.sources]
-tiders-core = { path = "../tiders-core/python", editable = true }
-
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
