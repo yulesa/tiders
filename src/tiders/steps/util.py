@@ -2,12 +2,16 @@ import pyarrow as pa
 from copy import deepcopy
 
 
-def _replace_type(dt: pa.DataType, from_type: pa.DataType, to_type: pa.DataType) -> pa.DataType:
+def _replace_type(
+    dt: pa.DataType, from_type: pa.DataType, to_type: pa.DataType
+) -> pa.DataType:
     if dt == from_type:
         return to_type
     if pa.types.is_struct(dt):
         new_fields = [
-            pa.field(dt.field(i).name, _replace_type(dt.field(i).type, from_type, to_type))
+            pa.field(
+                dt.field(i).name, _replace_type(dt.field(i).type, from_type, to_type)
+            )
             for i in range(dt.num_fields)
         ]
         return pa.struct(new_fields)
