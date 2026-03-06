@@ -19,18 +19,22 @@ def execute(
     for batch in input_batches:
         output_batches.append(
             svm_decode_instructions(
-                config.instruction_signature, batch, config.allow_decode_fail
+                config.instruction_signature,
+                batch,
+                config.allow_decode_fail,
+                config.filter_by_discriminator,
+                config.hstack,
             )
         )
 
-    output_table = pa.Table.from_batches(
-        output_batches,
-        schema=instruction_signature_to_arrow_schema(config.instruction_signature),
-    )
+    # When hstack is enabled, the output schema includes both decoded and
+    # original input columns, so we derive it from the batches themselves.
+    if config.hstack and output_batches:
+        schema = output_batches[0].schema
+    else:
+        schema = instruction_signature_to_arrow_schema(config.instruction_signature)
 
-    if config.hstack:
-        for i, col in enumerate(input_table.columns):
-            output_table = output_table.append_column(input_table.field(i), col)
+    output_table = pa.Table.from_batches(output_batches, schema=schema)
 
     data[config.output_table] = output_table
 

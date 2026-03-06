@@ -138,6 +138,7 @@ class GlaciersEventsConfig:
 class SvmDecodeInstructionsConfig:
     instruction_signature: InstructionSignature
     allow_decode_fail: bool = False
+    filter_by_discriminator: bool = False
     input_table: str = "instructions"
     output_table: str = "decoded_instructions"
     hstack: bool = True
