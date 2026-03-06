@@ -1,5 +1,5 @@
-# This example shows a simple pipeline that ingests the last 10 blocks
-# directly from an Ethereum RPC node (e.g. a local node or Alchemy/Infura endpoint).
+# This example shows a simple pipeline that ingests the last 100 blocks
+# directly from an Ethereum RPC node (e.g. a local node or Alchemy endpoint).
 # Tiders is published to PyPI as tiders and tiders-core.
 # To install it, run: pip install tiders tiders-core
 # Or with uv: uv pip install tiders tiders-core
@@ -9,7 +9,7 @@
 # uv run examples/rpc_pipeline.py https://your-rpc-url
 # RPC_URL priority: command-line arg > env var > examples/.env > default fallback.
 
-# After run, the parquet files are written to data/blocks/
+# After run, the parquet files are written to data/
 
 import asyncio
 import os

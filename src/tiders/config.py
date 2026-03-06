@@ -27,7 +27,6 @@ class WriterKind(str, Enum):
 
 
 class StepKind(str, Enum):
-    EVM_VALIDATE_BLOCK_DATA = "evm_validate_block_data"
     EVM_DECODE_EVENTS = "evm_decode_events"
     CAST = "cast"
     HEX_ENCODE = "hex_encode"
@@ -118,17 +117,10 @@ class Writer:
 
 
 @dataclass
-class EvmValidateBlockDataConfig:
-    blocks: str = "blocks"
-    transactions: str = "transactions"
-    logs: str = "logs"
-    traces: str = "traces"
-
-
-@dataclass
 class EvmDecodeEventsConfig:
     event_signature: str
     allow_decode_fail: bool = False
+    filter_by_topic0: bool = False
     input_table: str = "logs"
     output_table: str = "decoded_logs"
     hstack: bool = True
@@ -211,11 +203,29 @@ class SetChainIdConfig:
 
 
 @dataclass
+class EvmTableAliases:
+    blocks: Optional[str] = None
+    transactions: Optional[str] = None
+    logs: Optional[str] = None
+    traces: Optional[str] = None
+
+
+@dataclass
+class SvmTableAliases:
+    blocks: Optional[str] = None
+    transactions: Optional[str] = None
+    instructions: Optional[str] = None
+    logs: Optional[str] = None
+    balances: Optional[str] = None
+    token_balances: Optional[str] = None
+    rewards: Optional[str] = None
+
+
+@dataclass
 class Step:
     kind: StepKind
     config: (
-        EvmValidateBlockDataConfig
-        | EvmDecodeEventsConfig
+        EvmDecodeEventsConfig
         | CastConfig
         | HexEncodeConfig
         | U256ToBinaryConfig
@@ -237,13 +247,15 @@ class Pipeline:
     query: Query
     writer: Writer
     steps: List[Step]
+    table_aliases: Optional[EvmTableAliases | SvmTableAliases] = None
 
 
 __all__ = [
     "Pipeline",
     "Step",
-    "EvmValidateBlockDataConfig",
     "EvmDecodeEventsConfig",
+    "EvmTableAliases",
+    "SvmTableAliases",
     "CastConfig",
     "HexEncodeConfig",
     "U256ToBinaryConfig",

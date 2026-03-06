@@ -21,6 +21,17 @@ def execute(data: Dict[str, pa.Table], config: HexEncodeConfig) -> Dict[str, pa.
         for batch in batches:
             out_batches.append(decode_fn(batch))
 
+        if not out_batches:
+            # Empty table: build an empty batch from the input schema so we can
+            # derive the encoded schema and create an empty output table safely.
+            empty_batch = pa.RecordBatch.from_arrays(
+                [pa.array([], type=field.type) for field in table.schema],
+                schema=table.schema,
+            )
+            encoded_empty = decode_fn(empty_batch)
+            data[table_name] = pa.Table.from_batches([], schema=encoded_empty.schema)
+            continue
+
         data[table_name] = pa.Table.from_batches(out_batches)
 
     return data

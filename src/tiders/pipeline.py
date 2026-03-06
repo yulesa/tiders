@@ -1,5 +1,7 @@
 import asyncio
 import logging
+from dataclasses import asdict
+from enum import Enum
 
 from .config import (
     Base58EncodeConfig,
@@ -10,6 +12,8 @@ from .config import (
     EvmDecodeEventsConfig,
     HexEncodeConfig,
     Pipeline,
+    EvmTableAliases,
+    SvmTableAliases,
     SetChainIdConfig,
     Step,
     StepKind,
@@ -19,12 +23,41 @@ from .config import (
 )
 from typing import Dict, List, Optional
 from tiders_core.ingest import start_stream
+from tiders_core.ingest import QueryKind
 import pyarrow as pa
 from .writers.writer import create_writer
 from . import steps as step_def
 from copy import deepcopy
 
 logger = logging.getLogger(__name__)
+
+
+def _apply_table_aliases(
+    query_kind: QueryKind | str,
+    data: Dict[str, pa.RecordBatch],
+    aliases: Optional[EvmTableAliases | SvmTableAliases],
+) -> Dict[str, pa.RecordBatch]:
+    if aliases is None:
+        return data
+
+    kind = query_kind.value if isinstance(query_kind, Enum) else query_kind
+    if kind == QueryKind.EVM.value and isinstance(aliases, EvmTableAliases):
+        alias_map = asdict(aliases)
+    elif kind == QueryKind.SVM.value and isinstance(aliases, SvmTableAliases):
+        alias_map = asdict(aliases)
+    else:
+        return data
+
+    out: Dict[str, pa.RecordBatch] = {}
+    for table_name, table_batch in data.items():
+        resolved_name = alias_map.get(table_name) or table_name
+        if resolved_name in out:
+            raise ValueError(
+                f"table alias collision: multiple source tables resolved to '{resolved_name}'"
+            )
+        out[resolved_name] = table_batch
+
+    return out
 
 
 def process_steps(
@@ -113,6 +146,12 @@ async def run_pipeline(pipeline: Pipeline, pipeline_name: Optional[str] = None):
             break
 
         logger.debug("Received data from ingest")
+
+        data = _apply_table_aliases(
+            pipeline.query.kind,
+            data,
+            pipeline.table_aliases,
+        )
 
         tables = {}
 
