@@ -12,6 +12,7 @@
 
 import argparse
 import asyncio
+import pyarrow as pa
 import os
 from pathlib import Path
 from typing import Optional
@@ -187,6 +188,17 @@ def _pool_event_steps() -> list[cc.Step]:
                 ),
             ),
         )
+    steps.append(
+        cc.Step(
+            name="i256_to_i128",
+            kind=cc.StepKind.CAST_BY_TYPE,
+            config=cc.CastByTypeConfig(
+                from_type=pa.decimal256(76, 0),
+                to_type=pa.decimal128(38, 0),
+                allow_cast_fail=True,
+            ),
+        ),
+)
 
     # Convert binary columns (addresses/hashes/topics) to readable hex.
     steps.append(

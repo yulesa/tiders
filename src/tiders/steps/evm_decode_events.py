@@ -27,12 +27,11 @@ def execute(
             )
         )
 
-    # When hstack is enabled, the output schema includes both decoded and
-    # original input columns, so we derive it from the batches themselves.
-    if config.hstack and output_batches:
-        schema = output_batches[0].schema
+    decoded_schema = evm_event_signature_to_arrow_schema(config.event_signature)
+    if config.hstack:
+        schema = pa.schema(list(decoded_schema) + list(input_table.schema))
     else:
-        schema = evm_event_signature_to_arrow_schema(config.event_signature)
+        schema = decoded_schema
 
     output_table = pa.Table.from_batches(output_batches, schema=schema)
 
