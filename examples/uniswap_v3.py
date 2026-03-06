@@ -28,9 +28,7 @@ from tiders_core import evm_signature_to_topic0, ingest  # noqa: E402
 UNISWAP_V3_FACTORY = "0x1f98431c8ad98523631ae4a59f267346ea31f984"
 DEFAULT_HYPERSYNC_URL = "https://eth.hypersync.xyz"
 DEFAULT_SQD_URL = "https://portal.sqd.dev/datasets/ethereum-mainnet"
-# DEFAULT_RPC_URL = "https://mainnet.gateway.tenderly.co"
-DEFAULT_RPC_URL = "https://rpc.ankr.com/eth/50a801fe89cd57894b0126e260404700bed38e580067099c205d6a"
-
+DEFAULT_RPC_URL = "https://mainnet.gateway.tenderly.co"
 DATA_PATH = str(Path.cwd() / "data" / "uniswap_v3_pool_created")
 Path(DATA_PATH).mkdir(parents=True, exist_ok=True)
 WRITER_CHOICES = ["clickhouse", "delta_lake", "duckdb", "iceberg", "pyarrow"]
@@ -91,13 +89,15 @@ UNISWAP_V3_POOL_EVENT_SIGNATURES = [
 ]
 
 
-def provider_url(provider: ingest.ProviderKind, rpc_url: Optional[str]) -> Optional[str]:
+def provider_url(
+    provider: ingest.ProviderKind, rpc_url: Optional[str]
+) -> Optional[str]:
     if provider == ingest.ProviderKind.HYPERSYNC:
         return DEFAULT_HYPERSYNC_URL
     if provider == ingest.ProviderKind.SQD:
         return DEFAULT_SQD_URL
     if provider == ingest.ProviderKind.RPC:
-        return rpc_url or os.environ.get("RPC_URL", DEFAULT_RPC_URL) 
+        return rpc_url or os.environ.get("RPC_URL", DEFAULT_RPC_URL)
     return rpc_url or os.environ.get("RPC_URL")
 
 
@@ -120,7 +120,9 @@ async def main(
     # Read pool addresses produced by stage 1 and fan out the pool log indexing.
     pool_addresses = await load_pool_addresses(database)
     if not pool_addresses:
-        print("No pools found in uniswap_v3_pool_created. Skipping pool events pipeline.")
+        print(
+            "No pools found in uniswap_v3_pool_created. Skipping pool events pipeline."
+        )
         return
 
     print(f"Indexing pool events for {len(pool_addresses)} pools")
@@ -161,15 +163,16 @@ async def load_pool_addresses(database: str) -> list[str]:
     if database == "delta_lake":
         from deltalake import DeltaTable
 
-        table = DeltaTable(f"{DATA_PATH}/delta_lake/{POOL_CREATED_TABLE}").to_pyarrow_table(
-            columns=["pool"]
-        )
+        table = DeltaTable(
+            f"{DATA_PATH}/delta_lake/{POOL_CREATED_TABLE}"
+        ).to_pyarrow_table(columns=["pool"])
         addresses = {value.as_py() for value in table["pool"] if value.as_py()}
         return sorted(addresses)
 
     raise ValueError(
         f"Pool loading for database '{database}' is not supported. Use one of: duckdb, pyarrow, delta_lake."
     )
+
 
 def _pool_event_steps() -> list[cc.Step]:
     steps: list[cc.Step] = []
@@ -198,7 +201,7 @@ def _pool_event_steps() -> list[cc.Step]:
                 allow_cast_fail=True,
             ),
         ),
-)
+    )
 
     # Convert binary columns (addresses/hashes/topics) to readable hex.
     steps.append(
@@ -413,7 +416,9 @@ async def create_writer(database: str) -> cc.Writer:
             ),
         )
 
-    raise ValueError(f"Unknown database writer '{database}'. Expected one of {WRITER_CHOICES}")
+    raise ValueError(
+        f"Unknown database writer '{database}'. Expected one of {WRITER_CHOICES}"
+    )
 
 
 if __name__ == "__main__":
