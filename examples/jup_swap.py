@@ -102,6 +102,7 @@ async def main(
                     error=True,
                 ),
                 block=BlockFields(
+                    slot=True,
                     hash=True,
                     timestamp=True,
                 ),
@@ -193,8 +194,8 @@ async def main(
 
     # Post-pipeline Analytics
     connection.sql("""
-        CREATE OR REPLACE TABLE solana_amm AS SELECT * FROM read_csv('examples/using_datasets/svm/solana_swaps/solana_amm.csv');
-        CREATE OR REPLACE TABLE solana_tokens AS SELECT * FROM read_csv('examples/using_datasets/svm/solana_swaps/solana_tokens.csv');
+        CREATE OR REPLACE TABLE solana_amm AS SELECT * FROM read_csv('examples/solana_amm.csv');
+        CREATE OR REPLACE TABLE solana_tokens AS SELECT * FROM read_csv('examples/solana_tokens.csv');
         CREATE OR REPLACE TABLE jup_swaps AS            
             SELECT
                 di.amm AS amm,
