@@ -25,7 +25,8 @@ delta_lake = ["deltalake>=1.2.1"]
 iceberg = ["pyiceberg>=0.10.0"]
 polars = ["polars>=1.34.0"]
 datafusion = ["datafusion>=50.1.0"]
-all = ["tiders[duckdb,clickhouse,delta_lake,iceberg,polars,datafusion]"]
+cli = ["pyyaml>=6.0", "click>=8.0", "python-dotenv>=1.0"]
+all = ["tiders[duckdb,clickhouse,delta_lake,iceberg,polars,datafusion,cli]"]
 
 [dependency-groups]
 dev = [
