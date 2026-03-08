@@ -4,7 +4,11 @@ from typing import Dict
 
 from ..config import PolarsStepConfig
 import pyarrow as pa
-import polars as pl
+
+try:
+    import polars as pl
+except ImportError:
+    pl = None
 
 
 def execute(data: Dict[str, pa.Table], config: PolarsStepConfig) -> Dict[str, pa.Table]:
@@ -22,6 +26,11 @@ def execute(data: Dict[str, pa.Table], config: PolarsStepConfig) -> Dict[str, pa
     Returns:
         A new data dictionary with the transformed tables.
     """
+    if pl is None:
+        raise ImportError(
+            "Polars step requires the polars package. "
+            "Install it with: pip install tiders[polars]"
+        )
     pl_data = {}
 
     for name, table in data.items():

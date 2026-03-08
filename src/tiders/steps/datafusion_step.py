@@ -4,7 +4,11 @@ from typing import Dict
 
 from ..config import DataFusionStepConfig
 import pyarrow as pa
-import datafusion
+
+try:
+    import datafusion
+except ImportError:
+    datafusion = None
 
 
 def execute(
@@ -24,6 +28,11 @@ def execute(
     Returns:
         A new data dictionary with the transformed tables.
     """
+    if datafusion is None:
+        raise ImportError(
+            "DataFusion step requires the datafusion package. "
+            "Install it with: pip install tiders[datafusion]"
+        )
     df_data = {}
 
     ctx = datafusion.SessionContext()

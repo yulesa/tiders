@@ -9,7 +9,11 @@ import pyarrow as pa
 from .base import DataWriter
 from ..config import DuckdbWriterConfig
 import asyncio
-import duckdb
+
+try:
+    import duckdb
+except ImportError:
+    duckdb = None
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +57,11 @@ class Writer(DataWriter):
     """
 
     def __init__(self, config: DuckdbWriterConfig):
+        if duckdb is None:
+            raise ImportError(
+                "DuckDB writer requires the duckdb package. "
+                "Install it with: pip install tiders[duckdb]"
+            )
         self.connection = config.connection
         self.first_push = True
         logger.warning(

@@ -16,9 +16,9 @@ from . import (
     svm_decode_instructions,
     svm_decode_logs,
     set_chain_id,
-    polars_step,
-    datafusion_step,
 )
+
+_LAZY_MODULES = {"polars_step", "datafusion_step"}
 
 __all__ = [
     "evm_decode_events",
@@ -34,3 +34,12 @@ __all__ = [
     "polars_step",
     "datafusion_step",
 ]
+
+
+def __getattr__(name: str):
+    if name in _LAZY_MODULES:
+        import importlib
+        mod = importlib.import_module(f".{name}", __name__)
+        globals()[name] = mod
+        return mod
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

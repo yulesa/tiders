@@ -10,10 +10,14 @@ from copy import deepcopy
 import asyncio
 
 import pyarrow as pa
-from deltalake import write_deltalake
 
 from ..config import DeltaLakeWriterConfig
 from ..writers.base import DataWriter
+
+try:
+    from deltalake import write_deltalake
+except ImportError:
+    write_deltalake = None
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +31,11 @@ class Writer(DataWriter):
     """
 
     def __init__(self, config: DeltaLakeWriterConfig):
+        if write_deltalake is None:
+            raise ImportError(
+                "Delta Lake writer requires the deltalake package. "
+                "Install it with: pip install tiders[delta_lake]"
+            )
         self.config = deepcopy(config)
         self.config.data_uri = self.config.data_uri.rstrip("/")
 
