@@ -1,3 +1,5 @@
+"""Type-level casting step that converts all columns of a given type across all tables."""
+
 from typing import Dict
 from copy import deepcopy
 
@@ -7,6 +9,18 @@ from ..config import CastByTypeConfig
 
 
 def execute(data: Dict[str, pa.Table], config: CastByTypeConfig) -> Dict[str, pa.Table]:
+    """Cast every column matching ``config.from_type`` to ``config.to_type``.
+
+    Applies the conversion across all tables in the data dictionary. The schema
+    of each table is updated via ``tiders_core.cast_schema_by_type``.
+
+    Args:
+        data: A dictionary mapping table names to PyArrow Tables.
+        config: A :class:`CastByTypeConfig` with source and target types.
+
+    Returns:
+        A new data dictionary with the casts applied.
+    """
     data = deepcopy(data)
 
     for table_name, table_data in data.items():

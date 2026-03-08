@@ -1,3 +1,5 @@
+"""Factory for instantiating the correct :class:`DataWriter` from a :class:`Writer` config."""
+
 from . import pyarrow_dataset
 from ..writers.base import DataWriter
 from ..config import (
@@ -16,6 +18,18 @@ logger = logging.getLogger(__name__)
 
 
 def create_writer(writer: Writer) -> DataWriter:
+    """Create and return a concrete :class:`DataWriter` based on the writer kind.
+
+    Args:
+        writer: A :class:`Writer` instance pairing a :class:`WriterKind` with
+            its backend-specific configuration.
+
+    Returns:
+        A concrete :class:`DataWriter` subclass ready to accept data.
+
+    Raises:
+        ValueError: If ``writer.kind`` does not match any supported backend.
+    """
     match writer.kind:
         case WriterKind.ICEBERG:
             assert isinstance(writer.config, IcebergWriterConfig)

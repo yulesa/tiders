@@ -1,3 +1,5 @@
+"""Hex-encoding step for converting binary columns to hex strings."""
+
 from typing import Dict
 from copy import deepcopy
 
@@ -7,6 +9,20 @@ import pyarrow as pa
 
 
 def execute(data: Dict[str, pa.Table], config: HexEncodeConfig) -> Dict[str, pa.Table]:
+    """Encode binary columns in the specified tables as hexadecimal strings.
+
+    Uses ``prefix_hex_encode`` (``0x``-prefixed) or ``hex_encode`` (raw)
+    depending on ``config.prefixed``. When a table has no batches, an empty
+    table with the correctly encoded schema is produced.
+
+    Args:
+        data: A dictionary mapping table names to PyArrow Tables.
+        config: A :class:`HexEncodeConfig` controlling which tables to process
+            and whether to ``0x``-prefix the output.
+
+    Returns:
+        A new data dictionary with hex-encoded columns.
+    """
     data = deepcopy(data)
 
     decode_fn = prefix_hex_encode if config.prefixed else hex_encode

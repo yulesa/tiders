@@ -1,3 +1,8 @@
+"""DuckDB writer backend.
+
+Inserts Arrow data into DuckDB tables, auto-creating them on the first push.
+"""
+
 import logging
 from typing import Dict
 import pyarrow as pa
@@ -10,6 +15,19 @@ logger = logging.getLogger(__name__)
 
 
 def _downcast_decimal256(table: pa.Table) -> pa.Table:
+    """Downcast any ``Decimal256`` columns to ``Decimal128(38, scale)``.
+
+    DuckDB does not support ``Decimal256``. This function finds such columns
+    and casts them to ``Decimal128`` with a maximum precision of 38. Values
+    exceeding 38 digits will cause a cast error unless handled upstream.
+
+    Args:
+        table: A PyArrow Table that may contain ``Decimal256`` columns.
+
+    Returns:
+        The table with ``Decimal256`` columns downcast, or the original table
+        if none were found.
+    """
     new_fields = []
     needs_cast = False
     for f in table.schema:
@@ -27,6 +45,13 @@ def _downcast_decimal256(table: pa.Table) -> pa.Table:
 
 
 class Writer(DataWriter):
+    """DuckDB writer that creates tables on the first push and inserts thereafter.
+
+    All inserts are wrapped in a transaction. ``Decimal256`` columns are
+    automatically downcast to ``Decimal128(38, 0)`` since DuckDB does not
+    support 256-bit decimals.
+    """
+
     def __init__(self, config: DuckdbWriterConfig):
         self.connection = config.connection
         self.first_push = True
@@ -39,6 +64,12 @@ class Writer(DataWriter):
         )
 
     def push_data_impl(self, data: Dict[str, pa.Table]) -> None:
+        """Synchronous implementation of data insertion into DuckDB.
+
+        On the first call, tables are created via ``CREATE TABLE ... AS SELECT``
+        if they don't exist, or inserted into if they do. Subsequent calls
+        insert directly.
+        """
         data = {name: _downcast_decimal256(t) for name, t in data.items()}
         self.connection.begin()
 
@@ -74,4 +105,5 @@ class Writer(DataWriter):
         self.connection.commit()
 
     async def push_data(self, data: Dict[str, pa.Table]) -> None:
+        """Insert data into DuckDB, running the blocking operation in a background thread."""
         await asyncio.to_thread(self.push_data_impl, data)
