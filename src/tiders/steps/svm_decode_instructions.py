@@ -1,3 +1,5 @@
+"""SVM (Solana) instruction decoding step."""
+
 from typing import Dict
 from copy import deepcopy
 
@@ -9,6 +11,21 @@ import pyarrow as pa
 def execute(
     data: Dict[str, pa.Table], config: SvmDecodeInstructionsConfig
 ) -> Dict[str, pa.Table]:
+    """Decode raw Solana instruction data into structured columns.
+
+    Reads from ``config.input_table``, decodes each batch using the provided
+    instruction signature, and writes the result to ``config.output_table``.
+    When ``config.hstack`` is ``True``, decoded columns are horizontally
+    stacked with the original instruction columns.
+
+    Args:
+        data: A dictionary mapping table names to PyArrow Tables.
+        config: An :class:`SvmDecodeInstructionsConfig` with the instruction
+            signature and decoding options.
+
+    Returns:
+        A new data dictionary containing the decoded output table.
+    """
     data = deepcopy(data)
 
     input_table = data[config.input_table]

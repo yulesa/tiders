@@ -1,3 +1,10 @@
+"""U256-to-binary conversion step.
+
+Converts ``Decimal256`` columns to a fixed-size binary representation, handling
+both top-level columns (via the Rust ``u256_to_binary`` function) and nested
+columns inside structs and lists (via a recursive Python fallback).
+"""
+
 from typing import Dict
 from copy import deepcopy
 
@@ -8,7 +15,21 @@ from tiders.config import U256ToBinaryConfig
 
 
 def _convert_array(arr: pa.Array) -> pa.Array:
-    """Recursively convert any remaining Decimal256 arrays the Rust function missed (e.g. nested inside List<Struct>)."""
+    """Recursively convert any remaining Decimal256 arrays the Rust function missed.
+
+    The Rust-level ``u256_to_binary`` handles top-level columns, but may not
+    traverse into nested types (e.g. ``List<Struct<Decimal256>>``). This
+    function walks the Arrow type tree and converts any ``Decimal256`` arrays
+    it finds using ``u256_column_to_binary``.
+
+    Args:
+        arr: A PyArrow Array that may contain Decimal256 values at any nesting
+            level.
+
+    Returns:
+        The array with all Decimal256 sub-arrays replaced by their binary
+        equivalents.
+    """
     if pa.types.is_decimal256(arr.type):
         return u256_column_to_binary(arr)
     if pa.types.is_struct(arr.type):
@@ -40,7 +61,19 @@ def _convert_array(arr: pa.Array) -> pa.Array:
 
 
 def _fix_nested(batch: pa.RecordBatch) -> pa.RecordBatch:
-    """Fix any Decimal256 columns that the Rust u256_to_binary missed in nested types."""
+    """Post-process a batch to convert any remaining nested Decimal256 columns.
+
+    Applies :func:`_convert_array` to every column in the batch and rebuilds
+    the schema to reflect the converted types.
+
+    Args:
+        batch: A PyArrow RecordBatch that has already been processed by the
+            Rust ``u256_to_binary`` function.
+
+    Returns:
+        A new RecordBatch with all Decimal256 columns (including nested ones)
+        converted to binary.
+    """
     new_columns = []
     new_fields = []
     for i, name in enumerate(batch.schema.names):
@@ -54,6 +87,20 @@ def _fix_nested(batch: pa.RecordBatch) -> pa.RecordBatch:
 def execute(
     data: Dict[str, pa.Table], config: U256ToBinaryConfig
 ) -> Dict[str, pa.Table]:
+    """Convert Decimal256 columns to binary across the specified tables.
+
+    First applies the Rust ``u256_to_binary`` for top-level columns, then runs
+    :func:`_fix_nested` to handle any nested Decimal256 values that the Rust
+    function does not reach.
+
+    Args:
+        data: A dictionary mapping table names to PyArrow Tables.
+        config: A :class:`U256ToBinaryConfig` controlling which tables to
+            process.
+
+    Returns:
+        A new data dictionary with Decimal256 columns converted to binary.
+    """
     data = deepcopy(data)
 
     table_names = data.keys() if config.tables is None else config.tables

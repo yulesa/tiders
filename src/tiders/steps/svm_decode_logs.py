@@ -1,3 +1,5 @@
+"""SVM (Solana) log decoding step."""
+
 from typing import Dict
 from copy import deepcopy
 
@@ -10,6 +12,27 @@ import pyarrow as pa
 def execute(
     data: Dict[str, pa.Table], config: SvmDecodeLogsConfig
 ) -> Dict[str, pa.Table]:
+    """Decode raw Solana program log entries into structured columns.
+
+    Reads from ``config.input_table``, decodes each batch using the provided
+    log signature, and writes the result to ``config.output_table``. When
+    ``config.hstack`` is ``True``, decoded columns are horizontally stacked
+    with the original log columns.
+
+    Note:
+        The schema generation reuses ``instruction_signature_to_arrow_schema``
+        by constructing a temporary ``InstructionSignature`` from the log
+        signature's params, since a dedicated log-schema function is not yet
+        available in ``tiders_core``.
+
+    Args:
+        data: A dictionary mapping table names to PyArrow Tables.
+        config: An :class:`SvmDecodeLogsConfig` with the log signature and
+            decoding options.
+
+    Returns:
+        A new data dictionary containing the decoded output table.
+    """
     data = deepcopy(data)
 
     input_table = data[config.input_table]

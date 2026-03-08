@@ -1,3 +1,5 @@
+"""Column-level type casting step."""
+
 from typing import Dict
 from copy import deepcopy
 
@@ -7,6 +9,21 @@ from ..config import CastConfig
 
 
 def execute(data: Dict[str, pa.Table], config: CastConfig) -> Dict[str, pa.Table]:
+    """Cast specific columns in a single table to new Arrow data types.
+
+    Only the table matching ``config.table_name`` is affected. Each column
+    listed in ``config.mappings`` is cast to its target type using the
+    Rust-backed ``tiders_core.cast`` function. The table schema is updated
+    accordingly via ``tiders_core.cast_schema``.
+
+    Args:
+        data: A dictionary mapping table names to PyArrow Tables.
+        config: A :class:`CastConfig` specifying the target table and
+            column-to-type mappings.
+
+    Returns:
+        A new data dictionary with the cast columns applied.
+    """
     data = deepcopy(data)
 
     mappings = list(config.mappings.items())

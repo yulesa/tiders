@@ -1,3 +1,9 @@
+"""Apache Iceberg writer backend.
+
+Creates Iceberg tables from Arrow schemas and appends data using the
+``pyiceberg`` catalog API.
+"""
+
 import logging
 from typing import Dict
 from ..writers.base import DataWriter
@@ -8,6 +14,13 @@ logger = logging.getLogger(__name__)
 
 
 class Writer(DataWriter):
+    """Iceberg writer that creates tables on first write and appends data.
+
+    The writer creates the Iceberg namespace on initialisation (if it doesn't
+    already exist) and lazily creates tables using the Arrow schema of the
+    first incoming batch.
+    """
+
     def __init__(self, config: IcebergWriterConfig):
         logger.debug("Initializing Iceberg writer...")
 
@@ -26,6 +39,7 @@ class Writer(DataWriter):
         self.catalog = config.catalog
 
     async def write_table(self, table_name: str, arrow_table: pa.Table) -> None:
+        """Append an Arrow Table to an existing Iceberg table."""
         logger.debug(f"Writing table: {table_name}")
 
         table_identifier = f"{self.namespace}.{table_name}"
@@ -34,6 +48,7 @@ class Writer(DataWriter):
         iceberg_table.append(arrow_table)
 
     async def push_data(self, data: Dict[str, pa.Table]) -> None:
+        """Create tables on first call (if needed) and append data to Iceberg."""
         if self.first_write:
             for table_name, table_data in data.items():
                 table_identifier = f"{self.namespace}.{table_name}"

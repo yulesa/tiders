@@ -1,3 +1,5 @@
+"""Custom DataFusion transformation step."""
+
 from typing import Dict
 
 from ..config import DataFusionStepConfig
@@ -8,6 +10,20 @@ import datafusion
 def execute(
     data: Dict[str, pa.Table], config: DataFusionStepConfig
 ) -> Dict[str, pa.Table]:
+    """Run a user-supplied function using a DataFusion session context.
+
+    Converts all PyArrow Tables to DataFusion DataFrames within a fresh
+    ``SessionContext``, invokes ``config.runner(ctx, dataframes, context)``,
+    and converts the returned DataFrames back to PyArrow Tables.
+
+    Args:
+        data: A dictionary mapping table names to PyArrow Tables.
+        config: A :class:`DataFusionStepConfig` containing the runner callable
+            and optional context.
+
+    Returns:
+        A new data dictionary with the transformed tables.
+    """
     df_data = {}
 
     ctx = datafusion.SessionContext()

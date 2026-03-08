@@ -1,3 +1,9 @@
+"""Delta Lake writer backend.
+
+Appends data to Delta tables using ``deltalake.write_deltalake`` with schema
+merging enabled.
+"""
+
 import logging
 from typing import Dict
 from copy import deepcopy
@@ -13,11 +19,19 @@ logger = logging.getLogger(__name__)
 
 
 class Writer(DataWriter):
+    """Delta Lake writer that appends Arrow Tables as Delta table partitions.
+
+    Each table is stored at ``<data_uri>/<table_name>/``. Writes are performed
+    in append mode with schema merging. If an ``anchor_table`` is configured,
+    it is written last.
+    """
+
     def __init__(self, config: DeltaLakeWriterConfig):
         self.config = deepcopy(config)
         self.config.data_uri = self.config.data_uri.rstrip("/")
 
     async def write_table(self, table_name: str, table_data: pa.Table) -> None:
+        """Write a single table to its Delta Lake location. Skips empty tables."""
         if table_data.num_rows == 0:
             return
 
@@ -32,6 +46,7 @@ class Writer(DataWriter):
         )
 
     async def push_data(self, data: Dict[str, pa.Table]) -> None:
+        """Write all tables to Delta Lake, with the anchor table written last."""
         # insert into all tables except the anchor table in parallel
         tasks = []
         for table_name, table_data in data.items():

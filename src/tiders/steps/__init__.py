@@ -1,3 +1,10 @@
+"""Transformation step modules.
+
+Each sub-module exposes an ``execute(data, config)`` function that receives the
+full data dictionary and a step-specific config, and returns a transformed data
+dictionary.
+"""
+
 from . import (
     evm_decode_events,
     cast,

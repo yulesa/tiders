@@ -1,3 +1,9 @@
+"""PyArrow dataset writer backend.
+
+Writes tables as Parquet files using ``pyarrow.dataset.write_dataset``,
+supporting partitioning, custom filesystems, and configurable file options.
+"""
+
 import logging
 from typing import Dict
 import pyarrow as pa
@@ -11,12 +17,20 @@ logger = logging.getLogger(__name__)
 
 
 class Writer(DataWriter):
+    """PyArrow dataset writer that outputs tables as partitioned Parquet files.
+
+    Each table is written to ``<base_dir>/<table_name>/``. A monotonic counter
+    is appended to the ``basename_template`` to ensure unique file names across
+    successive pushes. If an ``anchor_table`` is configured, it is written last.
+    """
+
     def __init__(self, config: PyArrowDatasetWriterConfig):
         self.config = deepcopy(config)
         self.config.base_dir = self.config.base_dir.rstrip("/")
         self._counters: Dict[str, int] = {}
 
     def _next_basename_template(self, table_name: str) -> str:
+        """Generate a unique basename template for the next write of a given table."""
         counter = self._counters.get(table_name, 0)
         self._counters[table_name] = counter + 1
         base = self.config.basename_template or "part-{i}.parquet"
@@ -24,6 +38,7 @@ class Writer(DataWriter):
         return f"{stem}-{counter}.{ext}"
 
     async def _write_table(self, table_name: str, table_data: pa.Table) -> None:
+        """Write a single table to its Parquet dataset directory."""
         await asyncio.to_thread(
             pa_dataset.write_dataset,
             data=table_data,
@@ -45,6 +60,7 @@ class Writer(DataWriter):
         )
 
     async def push_data(self, data: Dict[str, pa.Table]) -> None:
+        """Write all tables as Parquet datasets, with the anchor table written last."""
         tasks = []
         for table_name, table_data in data.items():
             if table_name == self.config.anchor_table:

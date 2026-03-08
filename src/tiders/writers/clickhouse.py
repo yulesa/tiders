@@ -1,3 +1,9 @@
+"""ClickHouse writer backend.
+
+Automatically creates tables from Arrow schemas and inserts data using the
+``clickhouse-connect`` async client.
+"""
+
 import logging
 from typing import Dict, cast as type_cast
 import pyarrow as pa
@@ -9,6 +15,20 @@ logger = logging.getLogger(__name__)
 
 
 def pyarrow_type_to_clickhouse(dt: pa.DataType) -> str:
+    """Convert a PyArrow data type to its ClickHouse SQL type string.
+
+    Supports scalar types (bool, integers, floats, strings, binary, dates,
+    timestamps, times, decimals) and compound types (lists, structs, maps).
+
+    Args:
+        dt: A PyArrow ``DataType`` to convert.
+
+    Returns:
+        The equivalent ClickHouse type name (e.g. ``"UInt64"``, ``"Array(String)"``).
+
+    Raises:
+        Exception: If the PyArrow type has no known ClickHouse mapping.
+    """
     if pa.types.is_boolean(dt):
         return "Bool"
     elif pa.types.is_int8(dt):
@@ -86,6 +106,14 @@ def pyarrow_type_to_clickhouse(dt: pa.DataType) -> str:
 
 
 class Writer(DataWriter):
+    """ClickHouse writer that auto-creates tables and inserts Arrow data.
+
+    On the first :meth:`push_data` call (when ``create_tables`` is enabled),
+    tables are created using the Arrow schema of the incoming data. Subsequent
+    calls insert data directly. If an ``anchor_table`` is configured, it is
+    always inserted last to provide ordering guarantees.
+    """
+
     def __init__(self, config: ClickHouseWriterConfig):
         self.client = config.client
         self.order_by = config.order_by
@@ -97,12 +125,14 @@ class Writer(DataWriter):
         self.create_tables = config.create_tables
 
     async def _create_table_if_not_exists(self, table_name: str, schema: pa.Schema):
+        """Create a ClickHouse table from an Arrow schema if it does not already exist."""
         if not await self._check_table_exists(table_name):
             await self._create_table(table_name, schema)
         else:
             logger.debug(f"table {table_name} already exists so skipping creation")
 
     async def _check_table_exists(self, table_name: str) -> bool:
+        """Return ``True`` if a table with the given name exists in the current database."""
         res = await self.client.query(
             f"SELECT count() > 0 as table_exists FROM system.tables WHERE database = '{self.client.client.database}' AND name = '{table_name}'"
         )
@@ -110,6 +140,7 @@ class Writer(DataWriter):
         return bool(res.result_rows[0][0])
 
     async def _create_table(self, table_name: str, schema: pa.Schema) -> None:
+        """Issue a ``CREATE TABLE`` DDL statement followed by any skip-index definitions."""
         columns = []
 
         for field in schema:
@@ -148,6 +179,7 @@ class Writer(DataWriter):
                 await self.client.command(skip_index)
 
     async def push_data(self, data: Dict[str, pa.Table]) -> None:
+        """Insert Arrow Tables into ClickHouse, creating tables on the first call if needed."""
         # create tables if this is the first insert
         if self.create_tables and self.first_insert:
             tasks = []

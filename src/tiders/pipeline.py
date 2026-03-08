@@ -1,3 +1,10 @@
+"""Pipeline execution engine.
+
+This module implements the core runtime loop: it streams data from a blockchain
+provider, applies table aliases, runs transformation steps, and pushes results
+to a configured writer backend.
+"""
+
 import asyncio
 import logging
 from dataclasses import asdict
@@ -37,6 +44,22 @@ def _apply_table_aliases(
     data: Dict[str, pa.RecordBatch],
     aliases: Optional[EvmTableAliases | SvmTableAliases],
 ) -> Dict[str, pa.RecordBatch]:
+    """Rename tables from their default ingested names to user-defined aliases.
+
+    Args:
+        query_kind: The kind of blockchain query (EVM or SVM), used to select
+            the correct alias mapping.
+        data: A dictionary mapping table names to PyArrow RecordBatches.
+        aliases: An :class:`EvmTableAliases` or :class:`SvmTableAliases`
+            instance, or ``None`` to skip aliasing.
+
+    Returns:
+        A new dictionary with renamed keys. Tables without an alias keep their
+        original name.
+
+    Raises:
+        ValueError: If two source tables resolve to the same alias.
+    """
     if aliases is None:
         return data
 
@@ -64,6 +87,22 @@ def process_steps(
     data: Dict[str, pa.Table],
     steps: List[Step],
 ) -> Dict[str, pa.Table]:
+    """Apply an ordered list of transformation steps to the data tables.
+
+    Each step receives the full data dictionary and returns a (possibly
+    modified) copy. Steps are executed sequentially in the order they appear in
+    ``steps``.
+
+    Args:
+        data: A dictionary mapping table names to PyArrow Tables.
+        steps: The ordered list of :class:`Step` objects to execute.
+
+    Returns:
+        The transformed data dictionary after all steps have run.
+
+    Raises:
+        Exception: If a step has an unknown :attr:`StepKind`.
+    """
     logger.debug("Processing pipeline steps")
 
     data = deepcopy(data)
@@ -111,6 +150,22 @@ def process_steps(
 
 
 def merge_data(data: list[Dict[str, pa.Table]]) -> Dict[str, pa.Table]:
+    """Concatenate multiple data dictionaries into a single dictionary.
+
+    All dictionaries must contain exactly the same set of table names. Tables
+    with the same name are vertically concatenated using
+    ``pyarrow.concat_tables``.
+
+    Args:
+        data: A list of data dictionaries (each mapping table names to PyArrow
+            Tables).
+
+    Returns:
+        A single merged dictionary with one concatenated table per name.
+
+    Raises:
+        AssertionError: If the dictionaries do not share the same set of keys.
+    """
     keys = list(data[0].keys())
     keys.sort()
 
@@ -133,6 +188,23 @@ def merge_data(data: list[Dict[str, pa.Table]]) -> Dict[str, pa.Table]:
 
 
 async def run_pipeline(pipeline: Pipeline, pipeline_name: Optional[str] = None):
+    """Execute a full pipeline: ingest, transform, and write data.
+
+    This coroutine opens a streaming connection to the configured blockchain
+    data provider, and for each batch of data:
+
+    1. Applies table aliases (if configured).
+    2. Converts record batches to tables.
+    3. Runs all transformation steps (in a background thread).
+    4. Pushes the processed tables to the configured writer.
+
+    The loop runs until the stream is exhausted (``stream.next()`` returns
+    ``None``).
+
+    Args:
+        pipeline: The fully configured :class:`Pipeline` object.
+        pipeline_name: An optional name used in log messages for identification.
+    """
     logger.info(f"Running pipeline: {pipeline_name}")
     logger.debug(f"Pipeline config: {pipeline}")
 
