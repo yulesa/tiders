@@ -3,7 +3,7 @@
 # Or with uv: uv pip install tiders tiders-core
 
 # You can run this script with:
-# uv run examples/end_to_end/jup_swap.py --from_block 330447751 --to_block 330447751
+# uv run examples/jup_swap/jup_swap.py --from_block 330447751 --to_block 330447751
 
 # After run, you can see the result in the database:
 # duckdb data/solana_swaps.db
@@ -194,8 +194,8 @@ async def main(
 
     # Post-pipeline Analytics
     connection.sql("""
-        CREATE OR REPLACE TABLE solana_amm AS SELECT * FROM read_csv('examples/solana_amm.csv');
-        CREATE OR REPLACE TABLE solana_tokens AS SELECT * FROM read_csv('examples/solana_tokens.csv');
+        CREATE OR REPLACE TABLE solana_amm AS SELECT * FROM read_csv('examples/jup_swap/solana_amm.csv');
+        CREATE OR REPLACE TABLE solana_tokens AS SELECT * FROM read_csv('examples/jup_swap/solana_tokens.csv');
         CREATE OR REPLACE TABLE jup_swaps AS            
             SELECT
                 di.amm AS amm,

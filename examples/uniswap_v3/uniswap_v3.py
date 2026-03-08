@@ -23,7 +23,7 @@ load_dotenv(Path(__file__).parent / ".env")
 
 from tiders import config as cc  # noqa: E402
 from tiders import run_pipeline  # noqa: E402
-from tiders_core import evm_signature_to_topic0, ingest  # noqa: E402
+from tiders_core import evm_abi_events, ingest  # noqa: E402
 
 UNISWAP_V3_FACTORY = "0x1f98431c8ad98523631ae4a59f267346ea31f984"
 DEFAULT_HYPERSYNC_URL = "https://eth.hypersync.xyz"
@@ -39,53 +39,19 @@ POOL_EVENTS_TABLE = "uniswap_v3_pool_logs"
 POOL_CREATED_TABLE = "uniswap_v3_pool_created"
 
 
-# (label, ABI signature, output table)
+# Extract event signatures from ABI JSON files.
+_FACTORY_ABI_JSON = (Path(__file__).parent / "uniswap-v3-factory-abi.json").read_text()
+_FACTORY_EVENTS = {e.name: e for e in evm_abi_events(_FACTORY_ABI_JSON)}
+POOL_CREATED_SIGNATURE = _FACTORY_EVENTS["PoolCreated"].signature
+
+_POOL_ABI_JSON = (Path(__file__).parent / "uniswap-v3-pool-abi.json").read_text()
 UNISWAP_V3_POOL_EVENT_SIGNATURES = [
     (
-        "initialize",
-        "Initialize(uint160 sqrtPriceX96, int24 tick)",
-        "uniswap_v3_pool_initialize",
-    ),
-    (
-        "mint",
-        "Mint(address sender, address indexed owner, int24 indexed tickLower, int24 indexed tickUpper, uint128 amount, uint256 amount0, uint256 amount1)",
-        "uniswap_v3_pool_mint",
-    ),
-    (
-        "collect",
-        "Collect(address indexed owner, address recipient, int24 indexed tickLower, int24 indexed tickUpper, uint128 amount0, uint128 amount1)",
-        "uniswap_v3_pool_collect",
-    ),
-    (
-        "burn",
-        "Burn(address indexed owner, int24 indexed tickLower, int24 indexed tickUpper, uint128 amount, uint256 amount0, uint256 amount1)",
-        "uniswap_v3_pool_burn",
-    ),
-    (
-        "swap",
-        "Swap(address indexed sender, address indexed recipient, int256 amount0, int256 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick)",
-        "uniswap_v3_pool_swap",
-    ),
-    (
-        "flash",
-        "Flash(address indexed sender, address indexed recipient, uint256 amount0, uint256 amount1, uint256 paid0, uint256 paid1)",
-        "uniswap_v3_pool_flash",
-    ),
-    (
-        "increase_observation_cardinality_next",
-        "IncreaseObservationCardinalityNext(uint16 observationCardinalityNextOld, uint16 observationCardinalityNextNew)",
-        "uniswap_v3_pool_increase_observation_cardinality_next",
-    ),
-    (
-        "set_fee_protocol",
-        "SetFeeProtocol(uint8 feeProtocol0Old, uint8 feeProtocol1Old, uint8 feeProtocol0New, uint8 feeProtocol1New)",
-        "uniswap_v3_pool_set_fee_protocol",
-    ),
-    (
-        "collect_protocol",
-        "CollectProtocol(address indexed sender, address indexed recipient, uint128 amount0, uint128 amount1)",
-        "uniswap_v3_pool_collect_protocol",
-    ),
+        e.name_snake_case,
+        e.signature,
+        f"uniswap_v3_pool_{e.name_snake_case}",
+    )
+    for e in evm_abi_events(_POOL_ABI_JSON)
 ]
 
 
@@ -238,11 +204,7 @@ async def run_pool_created_pipeline(
             logs=[
                 ingest.evm.LogRequest(
                     address=[UNISWAP_V3_FACTORY],
-                    topic0=[
-                        evm_signature_to_topic0(
-                            "PoolCreated(address,address,uint24,int24,address)"
-                        )
-                    ],
+                    topic0=[_FACTORY_EVENTS["PoolCreated"].topic0],
                 )
             ],
             fields=ingest.evm.Fields(
@@ -274,7 +236,7 @@ async def run_pool_created_pipeline(
             cc.Step(
                 kind=cc.StepKind.EVM_DECODE_EVENTS,
                 config=cc.EvmDecodeEventsConfig(
-                    event_signature="PoolCreated(address indexed token0, address indexed token1, uint24 indexed fee, int24 tickSpacing, address pool)",
+                    event_signature=POOL_CREATED_SIGNATURE,
                     input_table=POOL_CREATED_LOGS_TABLE,
                     output_table=POOL_CREATED_TABLE,
                     allow_decode_fail=False,
