@@ -1,18 +1,53 @@
 """YAML config parser for tiders CLI.
 
-Parses the provider, contracts, query, and fields sections of a tiders YAML
-config file into the existing tiders dataclasses.
+Parses the provider, contracts, query, fields, and steps sections of a tiders
+YAML config file into the existing tiders dataclasses.
 """
 
 from __future__ import annotations
 
 import dataclasses
+import importlib.util
+import re
+import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Optional
+
+import pyarrow as pa
 
 from tiders_core import evm_abi_events, evm_abi_functions, evm_signature_to_topic0
 from tiders_core.ingest import ProviderConfig, ProviderKind, Query, QueryKind
 from tiders_core.ingest import evm, svm
+from tiders_core.svm_decode import (
+    Array,
+    DynType,
+    Enum,
+    Field,
+    FixedArray,
+    InstructionSignature,
+    LogSignature,
+    Option,
+    ParamInput,
+    Struct,
+    Variant,
+)
+
+from tiders.config import (
+    Base58EncodeConfig,
+    CastByTypeConfig,
+    CastConfig,
+    DataFusionStepConfig,
+    EvmDecodeEventsConfig,
+    GlaciersEventsConfig,
+    HexEncodeConfig,
+    PolarsStepConfig,
+    SetChainIdConfig,
+    Step,
+    StepKind,
+    SvmDecodeInstructionsConfig,
+    SvmDecodeLogsConfig,
+    U256ToBinaryConfig,
+)
 
 
 class YamlConfigError(Exception):
@@ -576,3 +611,618 @@ def parse_provider_and_query(
     query = parse_query(dict(query_raw))
 
     return provider, query
+
+
+# ---------------------------------------------------------------------------
+# PyArrow type string parsing
+# ---------------------------------------------------------------------------
+
+# Matches type strings like "decimal128(38,0)", "decimal256(76,0)", "int32", etc.
+_PARAMETERIZED_TYPE_RE = re.compile(r"^(\w+)\((.+)\)$")
+
+_SIMPLE_PA_TYPES: dict[str, pa.DataType] = {
+    "int8": pa.int8(),
+    "int16": pa.int16(),
+    "int32": pa.int32(),
+    "int64": pa.int64(),
+    "uint8": pa.uint8(),
+    "uint16": pa.uint16(),
+    "uint32": pa.uint32(),
+    "uint64": pa.uint64(),
+    "float16": pa.float16(),
+    "float32": pa.float32(),
+    "float64": pa.float64(),
+    "string": pa.string(),
+    "utf8": pa.utf8(),
+    "large_string": pa.large_string(),
+    "large_utf8": pa.large_utf8(),
+    "binary": pa.binary(),
+    "large_binary": pa.large_binary(),
+    "bool": pa.bool_(),
+    "boolean": pa.bool_(),
+    "date32": pa.date32(),
+    "date64": pa.date64(),
+    "null": pa.null(),
+}
+
+
+def parse_pa_type(type_str: str, path: str) -> pa.DataType:
+    """Parse a type string like ``"decimal128(38,0)"`` into a ``pa.DataType``.
+
+    Supported formats:
+    - Simple: ``"int32"``, ``"string"``, ``"float64"``, ``"binary"``, etc.
+    - Decimal: ``"decimal128(precision,scale)"``, ``"decimal256(precision,scale)"``
+    """
+    type_str = type_str.strip()
+
+    # Try simple types first
+    if type_str in _SIMPLE_PA_TYPES:
+        return _SIMPLE_PA_TYPES[type_str]
+
+    # Try parameterized types
+    m = _PARAMETERIZED_TYPE_RE.match(type_str)
+    if m:
+        type_name = m.group(1)
+        params_str = m.group(2)
+
+        if type_name == "decimal128":
+            try:
+                parts = [int(p.strip()) for p in params_str.split(",")]
+                if len(parts) != 2:
+                    raise ValueError("expected 2 params")
+                return pa.decimal128(parts[0], parts[1])
+            except (ValueError, TypeError) as e:
+                raise YamlConfigError(
+                    f"Invalid decimal128 parameters '{params_str}'. "
+                    f"Expected 'decimal128(precision,scale)', e.g. 'decimal128(38,0)'. "
+                    f"Error: {e}",
+                    path,
+                ) from e
+
+        if type_name == "decimal256":
+            try:
+                parts = [int(p.strip()) for p in params_str.split(",")]
+                if len(parts) != 2:
+                    raise ValueError("expected 2 params")
+                return pa.decimal256(parts[0], parts[1])
+            except (ValueError, TypeError) as e:
+                raise YamlConfigError(
+                    f"Invalid decimal256 parameters '{params_str}'. "
+                    f"Expected 'decimal256(precision,scale)', e.g. 'decimal256(76,0)'. "
+                    f"Error: {e}",
+                    path,
+                ) from e
+
+    raise YamlConfigError(
+        f"Unknown type '{type_str}'. Supported simple types: "
+        f"{sorted(_SIMPLE_PA_TYPES.keys())}. "
+        f"Parameterized types: decimal128(p,s), decimal256(p,s).",
+        path,
+    )
+
+
+# ---------------------------------------------------------------------------
+# SVM DynType parsing (for instruction/log signatures)
+# ---------------------------------------------------------------------------
+
+_PRIMITIVE_DYNTYPE_MAP: dict[str, str] = {
+    "i8": "i8", "i16": "i16", "i32": "i32", "i64": "i64", "i128": "i128",
+    "u8": "u8", "u16": "u16", "u32": "u32", "u64": "u64", "u128": "u128",
+    "bool": "bool",
+}
+
+
+def _parse_dyntype(raw: Any, path: str) -> Any:
+    """Parse a DynType from a YAML value (string or dict).
+
+    Supported formats:
+    - Primitive string: ``"u64"``, ``"bool"``, ``"i128"``, etc.
+    - Dict with ``type`` key for complex types:
+      - ``{type: array, element: u8}``
+      - ``{type: fixed_array, element: u8, size: 32}``
+      - ``{type: option, element: u64}``
+      - ``{type: struct, fields: [{name: x, type: u64}, ...]}``
+      - ``{type: enum, variants: [{name: A, type: u32}, {name: B}]}``
+    """
+    if isinstance(raw, str):
+        if raw in _PRIMITIVE_DYNTYPE_MAP:
+            return _PRIMITIVE_DYNTYPE_MAP[raw]
+        raise YamlConfigError(
+            f"Unknown DynType primitive '{raw}'. "
+            f"Valid primitives: {sorted(_PRIMITIVE_DYNTYPE_MAP.keys())}.",
+            path,
+        )
+
+    if not isinstance(raw, dict):
+        raise YamlConfigError(
+            f"DynType must be a string (primitive) or a dict (complex type), "
+            f"got {type(raw).__name__}.",
+            path,
+        )
+
+    if "type" not in raw:
+        raise YamlConfigError(
+            "Complex DynType dict must have a 'type' key. "
+            "Supported: array, fixed_array, option, struct, enum.",
+            path,
+        )
+
+    type_name = raw["type"]
+
+    if type_name == "array":
+        if "element" not in raw:
+            raise YamlConfigError(
+                "Array type requires an 'element' key.", path
+            )
+        return Array(element_type=_parse_dyntype(raw["element"], f"{path}.element"))
+
+    if type_name == "fixed_array":
+        if "element" not in raw:
+            raise YamlConfigError(
+                "FixedArray type requires an 'element' key.", path
+            )
+        if "size" not in raw:
+            raise YamlConfigError(
+                "FixedArray type requires a 'size' key.", path
+            )
+        return FixedArray(
+            element_type=_parse_dyntype(raw["element"], f"{path}.element"),
+            size=int(raw["size"]),
+        )
+
+    if type_name == "option":
+        if "element" not in raw:
+            raise YamlConfigError(
+                "Option type requires an 'element' key.", path
+            )
+        return Option(element_type=_parse_dyntype(raw["element"], f"{path}.element"))
+
+    if type_name == "struct":
+        if "fields" not in raw:
+            raise YamlConfigError(
+                "Struct type requires a 'fields' list.", path
+            )
+        fields = []
+        for j, f in enumerate(raw["fields"]):
+            fp = f"{path}.fields[{j}]"
+            if "name" not in f:
+                raise YamlConfigError("Struct field must have a 'name'.", fp)
+            if "type" not in f:
+                raise YamlConfigError(
+                    f"Struct field '{f['name']}' must have a 'type'.", fp
+                )
+            fields.append(
+                Field(name=f["name"], element_type=_parse_dyntype(f["type"], fp))
+            )
+        return Struct(fields=fields)
+
+    if type_name == "enum":
+        if "variants" not in raw:
+            raise YamlConfigError(
+                "Enum type requires a 'variants' list.", path
+            )
+        variants = []
+        for j, v in enumerate(raw["variants"]):
+            vp = f"{path}.variants[{j}]"
+            if "name" not in v:
+                raise YamlConfigError("Enum variant must have a 'name'.", vp)
+            elem = None
+            if "type" in v:
+                elem = _parse_dyntype(v["type"], vp)
+            variants.append(Variant(name=v["name"], element_type=elem))
+        return Enum(variants=variants)
+
+    raise YamlConfigError(
+        f"Unknown complex DynType '{type_name}'. "
+        f"Supported: array, fixed_array, option, struct, enum.",
+        path,
+    )
+
+
+def _parse_param_inputs(
+    params_raw: list[dict[str, Any]], path: str
+) -> list[ParamInput]:
+    """Parse a list of parameter definitions into ParamInput objects."""
+    result = []
+    for i, p in enumerate(params_raw):
+        pp = f"{path}[{i}]"
+        if "name" not in p:
+            raise YamlConfigError("Parameter must have a 'name'.", pp)
+        if "type" not in p:
+            raise YamlConfigError(
+                f"Parameter '{p['name']}' must have a 'type'.", pp
+            )
+        result.append(
+            ParamInput(name=p["name"], param_type=_parse_dyntype(p["type"], pp))
+        )
+    return result
+
+
+# ---------------------------------------------------------------------------
+# SQL step runner builder
+# ---------------------------------------------------------------------------
+
+def _build_sql_runner(
+    queries: list[str],
+) -> Any:
+    """Build a DataFusion runner function that executes a list of SQL queries.
+
+    Each SQL query is executed against the session context. The last query's
+    result for each table name is kept. Tables referenced in FROM clauses are
+    automatically registered.
+    """
+    def sql_runner(ctx: Any, tables: dict, context: Any) -> dict:
+        result = dict(tables)
+        for sql in queries:
+            df = ctx.sql(sql)
+            # Use the table alias from the SQL if available;
+            # otherwise use "sql_result"
+            result_name = _extract_table_name_from_sql(sql) or "sql_result"
+            result[result_name] = df
+        return result
+
+    return sql_runner
+
+
+def _extract_table_name_from_sql(sql: str) -> Optional[str]:
+    """Try to extract a destination table name from CREATE TABLE ... AS or
+    just return None for plain SELECT queries."""
+    # Match: CREATE TABLE <name> AS ...
+    m = re.match(
+        r"^\s*CREATE\s+(?:OR\s+REPLACE\s+)?TABLE\s+(\w+)\s+AS\s+",
+        sql,
+        re.IGNORECASE,
+    )
+    if m:
+        return m.group(1)
+    return None
+
+
+# ---------------------------------------------------------------------------
+# python_file step loader
+# ---------------------------------------------------------------------------
+
+def _load_python_file_step(
+    raw: dict[str, Any], path: str, yaml_dir: Path
+) -> Step:
+    """Load a step from a Python file, importing the function by name."""
+    if "file" not in raw:
+        raise YamlConfigError(
+            "python_file step requires a 'file' key pointing to a .py file.",
+            path,
+        )
+    if "function" not in raw:
+        raise YamlConfigError(
+            "python_file step requires a 'function' key naming the callable.",
+            path,
+        )
+
+    file_path = Path(raw["file"])
+    if not file_path.is_absolute():
+        file_path = yaml_dir / file_path
+    if not file_path.is_file():
+        raise YamlConfigError(
+            f"Python file not found: {file_path}. Check the path relative to "
+            f"the YAML config directory ({yaml_dir}).",
+            f"{path}.file",
+        )
+
+    func_name = raw["function"]
+    step_type = raw.get("step_type", "datafusion")
+
+    # Import the module from file path
+    module_name = f"_tiders_yaml_user_module_{file_path.stem}"
+    spec = importlib.util.spec_from_file_location(module_name, file_path)
+    if spec is None or spec.loader is None:
+        raise YamlConfigError(
+            f"Could not load Python module from {file_path}.", f"{path}.file"
+        )
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    try:
+        spec.loader.exec_module(module)
+    except Exception as e:
+        raise YamlConfigError(
+            f"Error loading Python file {file_path}: {e}", f"{path}.file"
+        ) from e
+
+    if not hasattr(module, func_name):
+        available = [
+            n for n in dir(module) if not n.startswith("_") and callable(getattr(module, n))
+        ]
+        raise YamlConfigError(
+            f"Function '{func_name}' not found in {file_path}. "
+            f"Available callables: {available}.",
+            f"{path}.function",
+        )
+
+    func = getattr(module, func_name)
+    context = raw.get("context")
+
+    if step_type == "polars":
+        return Step(
+            kind=StepKind.POLARS,
+            config=PolarsStepConfig(runner=func, context=context),
+            name=raw.get("name"),
+        )
+    elif step_type == "datafusion":
+        return Step(
+            kind=StepKind.DATAFUSION,
+            config=DataFusionStepConfig(runner=func, context=context),
+            name=raw.get("name"),
+        )
+    else:
+        raise YamlConfigError(
+            f"Unknown step_type '{step_type}'. Must be 'polars' or 'datafusion'.",
+            f"{path}.step_type",
+        )
+
+
+# ---------------------------------------------------------------------------
+# Steps parsing
+# ---------------------------------------------------------------------------
+
+def _parse_step(
+    raw: dict[str, Any], index: int, yaml_dir: Path
+) -> Step:
+    """Parse a single step from its YAML dict representation."""
+    path = f"steps[{index}]"
+
+    if "kind" not in raw:
+        raise YamlConfigError(
+            "Missing required key 'kind'. Each step must specify its type.",
+            path,
+        )
+    kind_str = raw["kind"]
+    config_raw = raw.get("config", {})
+    step_name = raw.get("name")
+
+    # --- YAML-only step kinds (not in StepKind enum) ---
+
+    if kind_str == "sql":
+        if "queries" not in config_raw:
+            raise YamlConfigError(
+                "SQL step requires 'config.queries': a list of SQL strings.",
+                f"{path}.config",
+            )
+        queries = config_raw["queries"]
+        if isinstance(queries, str):
+            queries = [queries]
+        if not isinstance(queries, list):
+            raise YamlConfigError(
+                "'config.queries' must be a string or list of SQL strings.",
+                f"{path}.config.queries",
+            )
+        runner = _build_sql_runner(queries)
+        return Step(
+            kind=StepKind.DATAFUSION,
+            config=DataFusionStepConfig(runner=runner),
+            name=step_name or "sql",
+        )
+
+    if kind_str == "python_file":
+        return _load_python_file_step(
+            {**config_raw, "name": step_name}, path, yaml_dir
+        )
+
+    # --- Standard step kinds ---
+
+    try:
+        kind = StepKind(kind_str)
+    except ValueError:
+        valid = [e.value for e in StepKind] + ["sql", "python_file"]
+        raise YamlConfigError(
+            f"Unknown step kind '{kind_str}'. Must be one of: {valid}.",
+            f"{path}.kind",
+        )
+
+    # Reject polars/datafusion in YAML mode
+    if kind == StepKind.POLARS:
+        raise YamlConfigError(
+            "The 'polars' step kind cannot be used directly in YAML mode "
+            "because it requires a Python callable. Use 'python_file' to "
+            "reference a .py file, or 'sql' for SQL-based transforms.",
+            f"{path}.kind",
+        )
+    if kind == StepKind.DATAFUSION:
+        raise YamlConfigError(
+            "The 'datafusion' step kind cannot be used directly in YAML mode "
+            "because it requires a Python callable. Use 'python_file' to "
+            "reference a .py file, or 'sql' for SQL-based transforms.",
+            f"{path}.kind",
+        )
+
+    config = _parse_step_config(kind, config_raw, path)
+    return Step(kind=kind, config=config, name=step_name)
+
+
+def _parse_step_config(
+    kind: StepKind, raw: dict[str, Any], path: str
+) -> Any:
+    """Parse a step's config dict into the appropriate config dataclass."""
+    cfg_path = f"{path}.config"
+
+    if kind == StepKind.EVM_DECODE_EVENTS:
+        if "event_signature" not in raw:
+            raise YamlConfigError(
+                "evm_decode_events requires 'config.event_signature'.",
+                cfg_path,
+            )
+        return EvmDecodeEventsConfig(
+            event_signature=raw["event_signature"],
+            allow_decode_fail=raw.get("allow_decode_fail", False),
+            filter_by_topic0=raw.get("filter_by_topic0", False),
+            input_table=raw.get("input_table", "logs"),
+            output_table=raw.get("output_table", "decoded_logs"),
+            hstack=raw.get("hstack", True),
+        )
+
+    if kind == StepKind.CAST_BY_TYPE:
+        if "from_type" not in raw:
+            raise YamlConfigError(
+                "cast_by_type requires 'config.from_type' (e.g. 'decimal256(76,0)').",
+                cfg_path,
+            )
+        if "to_type" not in raw:
+            raise YamlConfigError(
+                "cast_by_type requires 'config.to_type' (e.g. 'decimal128(38,0)').",
+                cfg_path,
+            )
+        return CastByTypeConfig(
+            from_type=parse_pa_type(raw["from_type"], f"{cfg_path}.from_type"),
+            to_type=parse_pa_type(raw["to_type"], f"{cfg_path}.to_type"),
+            allow_cast_fail=raw.get("allow_cast_fail", False),
+        )
+
+    if kind == StepKind.CAST:
+        if "table_name" not in raw:
+            raise YamlConfigError(
+                "cast requires 'config.table_name'.", cfg_path
+            )
+        if "mappings" not in raw:
+            raise YamlConfigError(
+                "cast requires 'config.mappings': a dict of "
+                "{column_name: type_string}.",
+                cfg_path,
+            )
+        mappings = {}
+        for col, type_str in raw["mappings"].items():
+            mappings[col] = parse_pa_type(
+                type_str, f"{cfg_path}.mappings.{col}"
+            )
+        return CastConfig(
+            table_name=raw["table_name"],
+            mappings=mappings,
+            allow_cast_fail=raw.get("allow_cast_fail", False),
+        )
+
+    if kind == StepKind.HEX_ENCODE:
+        return HexEncodeConfig(
+            tables=raw.get("tables"),
+            prefixed=raw.get("prefixed", True),
+        )
+
+    if kind == StepKind.BASE58_ENCODE:
+        return Base58EncodeConfig(tables=raw.get("tables"))
+
+    if kind == StepKind.U256_TO_BINARY:
+        return U256ToBinaryConfig(tables=raw.get("tables"))
+
+    if kind == StepKind.SET_CHAIN_ID:
+        if "chain_id" not in raw:
+            raise YamlConfigError(
+                "set_chain_id requires 'config.chain_id' (integer).",
+                cfg_path,
+            )
+        return SetChainIdConfig(chain_id=int(raw["chain_id"]))
+
+    if kind == StepKind.SVM_DECODE_INSTRUCTIONS:
+        return _parse_svm_decode_instructions_config(raw, cfg_path)
+
+    if kind == StepKind.SVM_DECODE_LOGS:
+        return _parse_svm_decode_logs_config(raw, cfg_path)
+
+    if kind == StepKind.GLACIERS_EVENTS:
+        if "abi_db_path" not in raw:
+            raise YamlConfigError(
+                "glaciers_events requires 'config.abi_db_path'.", cfg_path
+            )
+        return GlaciersEventsConfig(
+            abi_db_path=raw["abi_db_path"],
+            decoder_type=raw.get("decoder_type", "log"),
+            input_table=raw.get("input_table", "logs"),
+            output_table=raw.get("output_table", "decoded_logs"),
+        )
+
+    # Fallback for step kinds that don't need config parsing
+    raise YamlConfigError(
+        f"Step kind '{kind.value}' is not yet supported in YAML mode.",
+        f"{path}.kind",
+    )
+
+
+def _parse_svm_decode_instructions_config(
+    raw: dict[str, Any], path: str
+) -> SvmDecodeInstructionsConfig:
+    """Parse svm_decode_instructions config including the instruction signature."""
+    if "instruction_signature" not in raw:
+        raise YamlConfigError(
+            "svm_decode_instructions requires 'config.instruction_signature' "
+            "with 'discriminator', 'params', and 'accounts_names'.",
+            path,
+        )
+    sig_raw = raw["instruction_signature"]
+    sig_path = f"{path}.instruction_signature"
+
+    if "discriminator" not in sig_raw:
+        raise YamlConfigError(
+            "instruction_signature requires a 'discriminator' (hex string or bytes).",
+            sig_path,
+        )
+    if "params" not in sig_raw:
+        raise YamlConfigError(
+            "instruction_signature requires a 'params' list.",
+            sig_path,
+        )
+    if "accounts_names" not in sig_raw:
+        raise YamlConfigError(
+            "instruction_signature requires an 'accounts_names' list.",
+            sig_path,
+        )
+
+    params = _parse_param_inputs(sig_raw["params"], f"{sig_path}.params")
+    sig = InstructionSignature(
+        discriminator=sig_raw["discriminator"],
+        params=params,
+        accounts_names=sig_raw["accounts_names"],
+    )
+
+    return SvmDecodeInstructionsConfig(
+        instruction_signature=sig,
+        allow_decode_fail=raw.get("allow_decode_fail", False),
+        filter_by_discriminator=raw.get("filter_by_discriminator", False),
+        input_table=raw.get("input_table", "instructions"),
+        output_table=raw.get("output_table", "decoded_instructions"),
+        hstack=raw.get("hstack", True),
+    )
+
+
+def _parse_svm_decode_logs_config(
+    raw: dict[str, Any], path: str
+) -> SvmDecodeLogsConfig:
+    """Parse svm_decode_logs config including the log signature."""
+    if "log_signature" not in raw:
+        raise YamlConfigError(
+            "svm_decode_logs requires 'config.log_signature' with 'params'.",
+            path,
+        )
+    sig_raw = raw["log_signature"]
+    sig_path = f"{path}.log_signature"
+
+    if "params" not in sig_raw:
+        raise YamlConfigError(
+            "log_signature requires a 'params' list.", sig_path
+        )
+
+    params = _parse_param_inputs(sig_raw["params"], f"{sig_path}.params")
+    sig = LogSignature(params=params)
+
+    return SvmDecodeLogsConfig(
+        log_signature=sig,
+        allow_decode_fail=raw.get("allow_decode_fail", False),
+        input_table=raw.get("input_table", "logs"),
+        output_table=raw.get("output_table", "decoded_logs"),
+        hstack=raw.get("hstack", True),
+    )
+
+
+def parse_steps(
+    steps_raw: list[dict[str, Any]], yaml_dir: Path
+) -> list[Step]:
+    """Parse the ``steps`` YAML section into a list of Step dataclasses."""
+    if not isinstance(steps_raw, list):
+        raise YamlConfigError(
+            "'steps' must be a list of step definitions.",
+            "steps",
+        )
+    return [_parse_step(s, i, yaml_dir) for i, s in enumerate(steps_raw)]
