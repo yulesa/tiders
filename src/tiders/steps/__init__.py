@@ -39,6 +39,7 @@ __all__ = [
 def __getattr__(name: str):
     if name in _LAZY_MODULES:
         import importlib
+
         mod = importlib.import_module(f".{name}", __name__)
         globals()[name] = mod
         return mod

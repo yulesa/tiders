@@ -89,7 +89,7 @@ class Writer(DataWriter):
                     self.connection.sql(
                         f"INSERT INTO {table_name} SELECT * FROM table_data"
                     )
-                except duckdb.CatalogException:
+                except duckdb.CatalogException:  # type: ignore[union-attr]
                     logger.debug(
                         f"creating table {table_name} as it doesn't exist in the database yet"
                     )

@@ -1470,8 +1470,17 @@ def _parse_clickhouse_writer(raw: dict[str, Any], path: str) -> ClickHouseWriter
     import asyncio
 
     valid_keys = {
-        "host", "port", "username", "password", "database", "secure",
-        "codec", "order_by", "engine", "anchor_table", "create_tables",
+        "host",
+        "port",
+        "username",
+        "password",
+        "database",
+        "secure",
+        "codec",
+        "order_by",
+        "engine",
+        "anchor_table",
+        "create_tables",
     }
     unknown = set(raw.keys()) - valid_keys
     if unknown:
@@ -1551,7 +1560,13 @@ def _parse_delta_lake_writer(raw: dict[str, Any], path: str) -> DeltaLakeWriterC
 
 def _parse_iceberg_writer(raw: dict[str, Any], path: str) -> IcebergWriterConfig:
     """Parse Iceberg writer config: ``{namespace, catalog_type, ...}``."""
-    valid_keys = {"namespace", "catalog_uri", "warehouse", "catalog_type", "write_location"}
+    valid_keys = {
+        "namespace",
+        "catalog_uri",
+        "warehouse",
+        "catalog_type",
+        "write_location",
+    }
     unknown = set(raw.keys()) - valid_keys
     if unknown:
         raise YamlConfigError(

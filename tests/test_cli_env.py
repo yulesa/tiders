@@ -1,9 +1,5 @@
 from __future__ import annotations
 
-import os
-from pathlib import Path
-from textwrap import dedent
-
 import pytest
 
 from tiders.cli.env import (

@@ -426,7 +426,9 @@ class PolarsStepConfig:
             ``runner``.
     """
 
-    runner: Callable[[Dict[str, "pl.DataFrame"], Optional[Any]], Dict[str, "pl.DataFrame"]]
+    runner: Callable[
+        [Dict[str, "pl.DataFrame"], Optional[Any]], Dict[str, "pl.DataFrame"]
+    ]
     context: Optional[Any] = None
 
 

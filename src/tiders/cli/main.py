@@ -28,7 +28,6 @@ import click
 
 from .env import load_and_substitute
 from .tiders_yaml_parser import (
-    ProjectInfo,
     YamlConfigError,
     parse_tiders_yaml,
 )
@@ -179,8 +178,8 @@ def start(
     # Parse all sections
     try:
         yaml_dir = yaml_path.parent
-        project, provider, query, steps, writer, table_aliases, _contracts = parse_tiders_yaml(
-            raw_config, yaml_dir
+        project, provider, query, steps, writer, table_aliases, _contracts = (
+            parse_tiders_yaml(raw_config, yaml_dir)
         )
 
         # Apply --from-block / --to-block overrides

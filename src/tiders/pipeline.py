@@ -136,10 +136,12 @@ def process_steps(
             data = step_def.cast_by_type.execute(data, step.config)
         elif step.kind == StepKind.DATAFUSION:
             from .steps import datafusion_step
+
             assert isinstance(step.config, DataFusionStepConfig)
             data = datafusion_step.execute(data, step.config)
         elif step.kind == StepKind.POLARS:
             from .steps import polars_step
+
             assert isinstance(step.config, PolarsStepConfig)
             data = polars_step.execute(data, step.config)
         elif step.kind == StepKind.SET_CHAIN_ID:

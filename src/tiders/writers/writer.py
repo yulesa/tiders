@@ -31,22 +31,27 @@ def create_writer(writer: Writer) -> DataWriter:
     match writer.kind:
         case WriterKind.ICEBERG:
             from . import iceberg
+
             assert isinstance(writer.config, IcebergWriterConfig)
             return iceberg.Writer(writer.config)
         case WriterKind.CLICKHOUSE:
             from . import clickhouse
+
             assert isinstance(writer.config, ClickHouseWriterConfig)
             return clickhouse.Writer(writer.config)
         case WriterKind.DELTA_LAKE:
             from . import delta_lake
+
             assert isinstance(writer.config, DeltaLakeWriterConfig)
             return delta_lake.Writer(writer.config)
         case WriterKind.PYARROW_DATASET:
             from . import pyarrow_dataset
+
             assert isinstance(writer.config, PyArrowDatasetWriterConfig)
             return pyarrow_dataset.Writer(writer.config)
         case WriterKind.DUCKDB:
             from . import duckdb
+
             assert isinstance(writer.config, DuckdbWriterConfig)
             return duckdb.Writer(writer.config)
         case _:
