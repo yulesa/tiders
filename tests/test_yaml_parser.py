@@ -1,43 +1,48 @@
-"""Tests for the YAML config parser (provider, query, fields, contracts, steps)."""
+"""Tests for the YAML config parser (provider, query, fields, contracts, steps, writer, table_aliases)."""
 
 from __future__ import annotations
 
 import json
-from pathlib import Path
-from typing import Any
 
 import pyarrow as pa
 import pytest
 
-from tiders_core.ingest import ProviderConfig, ProviderKind, Query, QueryKind
-from tiders_core.ingest import evm, svm
-from tiders_core.svm_decode import Array, FixedArray, Option, Struct, Field, Enum, Variant
+from tiders_core.ingest import ProviderKind, QueryKind
+from tiders_core.ingest import svm
+from tiders_core.svm_decode import Array, FixedArray, Option, Struct, Enum
 
 from tiders.config import (
     Base58EncodeConfig,
     CastByTypeConfig,
     CastConfig,
     DataFusionStepConfig,
+    DeltaLakeWriterConfig,
+    DuckdbWriterConfig,
     EvmDecodeEventsConfig,
+    EvmTableAliases,
     GlaciersEventsConfig,
     HexEncodeConfig,
     PolarsStepConfig,
+    PyArrowDatasetWriterConfig,
     SetChainIdConfig,
-    Step,
     StepKind,
     SvmDecodeInstructionsConfig,
     SvmDecodeLogsConfig,
+    SvmTableAliases,
     U256ToBinaryConfig,
+    WriterKind,
 )
 from tiders.cli.tiders_yaml_parser import (
     ContractInfo,
     YamlConfigError,
-    load_contracts,
+    parse_contracts,
     parse_pa_type,
     parse_provider,
-    parse_provider_and_query,
     parse_query,
     parse_steps,
+    parse_table_aliases,
+    parse_tiders_yaml,
+    parse_writer,
     resolve_contract_refs,
     _parse_dyntype,
 )
@@ -46,6 +51,7 @@ from tiders.cli.tiders_yaml_parser import (
 # ---------------------------------------------------------------------------
 # Provider parsing
 # ---------------------------------------------------------------------------
+
 
 class TestParseProvider:
     def test_basic_hypersync(self):
@@ -90,6 +96,7 @@ class TestParseProvider:
 # ---------------------------------------------------------------------------
 # EVM query parsing
 # ---------------------------------------------------------------------------
+
 
 class TestParseEvmQuery:
     def test_basic_query(self):
@@ -252,6 +259,7 @@ class TestParseEvmQuery:
 # SVM query parsing
 # ---------------------------------------------------------------------------
 
+
 class TestParseSvmQuery:
     def test_basic_svm_query(self):
         raw = {
@@ -331,28 +339,30 @@ class TestParseSvmQuery:
 # ---------------------------------------------------------------------------
 
 # Minimal ERC20 ABI with Transfer event and approve function
-MINIMAL_ABI = json.dumps([
-    {
-        "type": "event",
-        "name": "Transfer",
-        "anonymous": False,
-        "inputs": [
-            {"name": "from", "type": "address", "indexed": True},
-            {"name": "to", "type": "address", "indexed": True},
-            {"name": "value", "type": "uint256", "indexed": False},
-        ],
-    },
-    {
-        "type": "function",
-        "name": "approve",
-        "stateMutability": "nonpayable",
-        "inputs": [
-            {"name": "spender", "type": "address"},
-            {"name": "amount", "type": "uint256"},
-        ],
-        "outputs": [{"name": "", "type": "bool"}],
-    },
-])
+MINIMAL_ABI = json.dumps(
+    [
+        {
+            "type": "event",
+            "name": "Transfer",
+            "anonymous": False,
+            "inputs": [
+                {"name": "from", "type": "address", "indexed": True},
+                {"name": "to", "type": "address", "indexed": True},
+                {"name": "value", "type": "uint256", "indexed": False},
+            ],
+        },
+        {
+            "type": "function",
+            "name": "approve",
+            "stateMutability": "nonpayable",
+            "inputs": [
+                {"name": "spender", "type": "address"},
+                {"name": "amount", "type": "uint256"},
+            ],
+            "outputs": [{"name": "", "type": "bool"}],
+        },
+    ]
+)
 
 
 class TestLoadContracts:
@@ -372,7 +382,7 @@ class TestLoadContracts:
                 ],
             }
         ]
-        result = load_contracts(contracts_yaml, tmp_path)
+        result = parse_contracts(contracts_yaml, tmp_path)
         assert "MyToken" in result
         c = result["MyToken"]
         assert c.address == "0x1234"
@@ -391,16 +401,16 @@ class TestLoadContracts:
                 "details": [{"address": "0xabc", "abi": "abis/token.json"}],
             }
         ]
-        result = load_contracts(contracts_yaml, tmp_path)
+        result = parse_contracts(contracts_yaml, tmp_path)
         assert "Transfer" in result["Token"].events
 
     def test_missing_name_raises(self, tmp_path):
         with pytest.raises(YamlConfigError, match="Missing required key 'name'"):
-            load_contracts([{"details": [{"address": "0x1"}]}], tmp_path)
+            parse_contracts([{"details": [{"address": "0x1"}]}], tmp_path)
 
     def test_missing_details_raises(self, tmp_path):
         with pytest.raises(YamlConfigError, match="Missing or empty 'details'"):
-            load_contracts([{"name": "Foo"}], tmp_path)
+            parse_contracts([{"name": "Foo"}], tmp_path)
 
     def test_missing_abi_file_raises(self, tmp_path):
         contracts_yaml = [
@@ -410,14 +420,12 @@ class TestLoadContracts:
             }
         ]
         with pytest.raises(YamlConfigError, match="ABI file not found"):
-            load_contracts(contracts_yaml, tmp_path)
+            parse_contracts(contracts_yaml, tmp_path)
 
     def test_contract_without_abi(self, tmp_path):
         """Contract with just an address (no ABI) should work."""
-        contracts_yaml = [
-            {"name": "Simple", "details": [{"address": "0xdeadbeef"}]}
-        ]
-        result = load_contracts(contracts_yaml, tmp_path)
+        contracts_yaml = [{"name": "Simple", "details": [{"address": "0xdeadbeef"}]}]
+        result = parse_contracts(contracts_yaml, tmp_path)
         assert result["Simple"].address == "0xdeadbeef"
         assert result["Simple"].events == {}
         assert result["Simple"].functions == {}
@@ -449,26 +457,25 @@ class TestResolveContractRefs:
         assert resolve_contract_refs("MyToken.address", contracts) == "0x1234abcd"
 
     def test_resolve_event_topic0(self, contracts):
-        result = resolve_contract_refs(
-            "MyToken.Events.Transfer.topic0", contracts
-        )
+        result = resolve_contract_refs("MyToken.Events.Transfer.topic0", contracts)
         assert result == "0x" + "aa" * 32
 
     def test_resolve_event_signature(self, contracts):
-        result = resolve_contract_refs(
-            "MyToken.Events.Transfer.signature", contracts
-        )
+        result = resolve_contract_refs("MyToken.Events.Transfer.signature", contracts)
         assert "Transfer" in result
 
     def test_resolve_function_selector(self, contracts):
-        result = resolve_contract_refs(
-            "MyToken.Functions.approve.selector", contracts
-        )
+        result = resolve_contract_refs("MyToken.Functions.approve.selector", contracts)
         assert result == "0x095ea7b3"
 
     def test_resolve_nested_dict(self, contracts):
         data = {
-            "logs": [{"address": "MyToken.address", "topic0": "MyToken.Events.Transfer.topic0"}]
+            "logs": [
+                {
+                    "address": "MyToken.address",
+                    "topic0": "MyToken.Events.Transfer.topic0",
+                }
+            ]
         }
         result = resolve_contract_refs(data, contracts)
         assert result["logs"][0]["address"] == "0x1234abcd"
@@ -492,10 +499,14 @@ class TestResolveContractRefs:
 
 
 # ---------------------------------------------------------------------------
-# Integration: parse_provider_and_query
+# Integration: parse_tiders_yaml
 # ---------------------------------------------------------------------------
 
-class TestParseProviderAndQuery:
+
+class TestParseTidersYaml:
+    def _duckdb_writer(self, tmp_path):
+        return {"kind": "duckdb", "config": {"path": str(tmp_path / "test.duckdb")}}
+
     def test_full_evm_config(self, tmp_path):
         abi_file = tmp_path / "erc20.json"
         abi_file.write_text(MINIMAL_ABI)
@@ -523,8 +534,11 @@ class TestParseProviderAndQuery:
                     "block": ["number", "timestamp"],
                 },
             },
+            "writer": self._duckdb_writer(tmp_path),
         }
-        provider, query = parse_provider_and_query(raw_config, tmp_path)
+        provider, query, steps, writer, table_aliases, contracts = parse_tiders_yaml(
+            raw_config, tmp_path
+        )
 
         assert provider.kind == ProviderKind.HYPERSYNC
         assert provider.url == "https://eth.hypersync.xyz"
@@ -536,23 +550,46 @@ class TestParseProviderAndQuery:
         assert query.params.logs[0].topic0[0].startswith("0x")
         assert query.params.fields.log.address is True
 
+        assert "Token" in contracts
+
     def test_no_contracts_section(self, tmp_path):
         raw_config = {
             "provider": {"kind": "sqd"},
             "query": {"kind": "evm", "from_block": 0},
+            "writer": self._duckdb_writer(tmp_path),
         }
-        provider, query = parse_provider_and_query(raw_config, tmp_path)
+        provider, query, steps, writer, table_aliases, contracts = parse_tiders_yaml(
+            raw_config, tmp_path
+        )
         assert provider.kind == ProviderKind.SQD
         assert query.kind == QueryKind.EVM
+        assert contracts == {}
 
     def test_missing_provider_raises(self, tmp_path):
         with pytest.raises(YamlConfigError, match="Missing required 'provider'"):
-            parse_provider_and_query({"query": {"kind": "evm"}}, tmp_path)
+            parse_tiders_yaml(
+                {"query": {"kind": "evm"}, "writer": self._duckdb_writer(tmp_path)},
+                tmp_path,
+            )
 
     def test_missing_query_raises(self, tmp_path):
         with pytest.raises(YamlConfigError, match="Missing required 'query'"):
-            parse_provider_and_query(
-                {"provider": {"kind": "hypersync"}}, tmp_path
+            parse_tiders_yaml(
+                {
+                    "provider": {"kind": "hypersync"},
+                    "writer": self._duckdb_writer(tmp_path),
+                },
+                tmp_path,
+            )
+
+    def test_missing_writer_raises(self, tmp_path):
+        with pytest.raises(YamlConfigError, match="Missing required 'writer'"):
+            parse_tiders_yaml(
+                {
+                    "provider": {"kind": "sqd"},
+                    "query": {"kind": "evm", "from_block": 0},
+                },
+                tmp_path,
             )
 
     def test_svm_config(self, tmp_path):
@@ -573,8 +610,11 @@ class TestParseProviderAndQuery:
                     "instruction": ["block_slot", "program_id", "data"],
                 },
             },
+            "writer": self._duckdb_writer(tmp_path),
         }
-        provider, query = parse_provider_and_query(raw_config, tmp_path)
+        provider, query, steps, writer, table_aliases, contracts = parse_tiders_yaml(
+            raw_config, tmp_path
+        )
         assert provider.kind == ProviderKind.YELLOWSTONE_GRPC
         assert query.kind == QueryKind.SVM
         assert query.params.from_block == 200_000_000
@@ -584,6 +624,7 @@ class TestParseProviderAndQuery:
 # ---------------------------------------------------------------------------
 # PyArrow type string parsing
 # ---------------------------------------------------------------------------
+
 
 class TestParsePaType:
     def test_simple_types(self):
@@ -622,6 +663,7 @@ class TestParsePaType:
 # ---------------------------------------------------------------------------
 # DynType parsing
 # ---------------------------------------------------------------------------
+
 
 class TestParseDynType:
     def test_primitives(self):
@@ -729,6 +771,7 @@ class TestParseDynType:
 # Steps parsing
 # ---------------------------------------------------------------------------
 
+
 class TestParseSteps:
     def test_evm_decode_events(self, tmp_path):
         steps = parse_steps(
@@ -748,7 +791,10 @@ class TestParseSteps:
         s = steps[0]
         assert s.kind == StepKind.EVM_DECODE_EVENTS
         assert isinstance(s.config, EvmDecodeEventsConfig)
-        assert s.config.event_signature == "Transfer(address indexed,address indexed,uint256)"
+        assert (
+            s.config.event_signature
+            == "Transfer(address indexed,address indexed,uint256)"
+        )
         assert s.config.input_table == "logs"
         assert s.config.output_table == "transfers"
         assert s.config.hstack is True
@@ -894,9 +940,7 @@ class TestParseSteps:
             parse_steps([{"kind": "datafusion"}], tmp_path)
 
     def test_step_name(self, tmp_path):
-        steps = parse_steps(
-            [{"kind": "hex_encode", "name": "my hex step"}], tmp_path
-        )
+        steps = parse_steps([{"kind": "hex_encode", "name": "my hex step"}], tmp_path)
         assert steps[0].name == "my hex step"
 
     def test_multiple_steps(self, tmp_path):
@@ -931,6 +975,7 @@ class TestParseSteps:
 # SVM decode steps
 # ---------------------------------------------------------------------------
 
+
 class TestParseSvmDecodeSteps:
     def test_svm_decode_instructions(self, tmp_path):
         steps = parse_steps(
@@ -942,7 +987,10 @@ class TestParseSvmDecodeSteps:
                             "discriminator": "e445a52e51cb9a1d",
                             "params": [
                                 {"name": "amount", "type": "u64"},
-                                {"name": "data", "type": {"type": "array", "element": "u8"}},
+                                {
+                                    "name": "data",
+                                    "type": {"type": "array", "element": "u8"},
+                                },
                             ],
                             "accounts_names": ["source", "destination", "authority"],
                         },
@@ -966,9 +1014,7 @@ class TestParseSvmDecodeSteps:
 
     def test_svm_decode_instructions_missing_sig_raises(self, tmp_path):
         with pytest.raises(YamlConfigError, match="instruction_signature"):
-            parse_steps(
-                [{"kind": "svm_decode_instructions", "config": {}}], tmp_path
-            )
+            parse_steps([{"kind": "svm_decode_instructions", "config": {}}], tmp_path)
 
     def test_svm_decode_logs(self, tmp_path):
         steps = parse_steps(
@@ -993,9 +1039,7 @@ class TestParseSvmDecodeSteps:
 
     def test_svm_decode_logs_missing_sig_raises(self, tmp_path):
         with pytest.raises(YamlConfigError, match="log_signature"):
-            parse_steps(
-                [{"kind": "svm_decode_logs", "config": {}}], tmp_path
-            )
+            parse_steps([{"kind": "svm_decode_logs", "config": {}}], tmp_path)
 
     def test_svm_struct_params(self, tmp_path):
         """Test parsing a complex struct type in instruction params."""
@@ -1013,7 +1057,13 @@ class TestParseSvmDecodeSteps:
                                         "type": "struct",
                                         "fields": [
                                             {"name": "x", "type": "u64"},
-                                            {"name": "y", "type": {"type": "option", "element": "u32"}},
+                                            {
+                                                "name": "y",
+                                                "type": {
+                                                    "type": "option",
+                                                    "element": "u32",
+                                                },
+                                            },
                                         ],
                                     },
                                 },
@@ -1034,6 +1084,7 @@ class TestParseSvmDecodeSteps:
 # ---------------------------------------------------------------------------
 # SQL step
 # ---------------------------------------------------------------------------
+
 
 class TestSqlStep:
     def test_sql_step(self, tmp_path):
@@ -1077,12 +1128,11 @@ class TestSqlStep:
 # python_file step
 # ---------------------------------------------------------------------------
 
+
 class TestPythonFileStep:
     def test_python_file_datafusion(self, tmp_path):
         py_file = tmp_path / "my_transform.py"
-        py_file.write_text(
-            "def my_runner(ctx, tables, context):\n    return tables\n"
-        )
+        py_file.write_text("def my_runner(ctx, tables, context):\n    return tables\n")
         steps = parse_steps(
             [
                 {
@@ -1102,9 +1152,7 @@ class TestPythonFileStep:
 
     def test_python_file_polars(self, tmp_path):
         py_file = tmp_path / "polars_step.py"
-        py_file.write_text(
-            "def transform(tables, context):\n    return tables\n"
-        )
+        py_file.write_text("def transform(tables, context):\n    return tables\n")
         steps = parse_steps(
             [
                 {
@@ -1124,9 +1172,7 @@ class TestPythonFileStep:
 
     def test_python_file_with_context(self, tmp_path):
         py_file = tmp_path / "ctx_step.py"
-        py_file.write_text(
-            "def run(ctx, tables, context):\n    return tables\n"
-        )
+        py_file.write_text("def run(ctx, tables, context):\n    return tables\n")
         steps = parse_steps(
             [
                 {
@@ -1223,3 +1269,218 @@ class TestPythonFileStep:
             tmp_path,
         )
         assert steps[0].kind == StepKind.DATAFUSION
+
+
+# ---------------------------------------------------------------------------
+# Writer parsing
+# ---------------------------------------------------------------------------
+
+
+class TestParseWriter:
+    def test_missing_kind_raises(self):
+        with pytest.raises(YamlConfigError, match="Missing required key 'kind'"):
+            parse_writer({"config": {}})
+
+    def test_invalid_kind_raises(self):
+        with pytest.raises(YamlConfigError, match="Unknown writer kind 'nosql'"):
+            parse_writer({"kind": "nosql", "config": {}})
+
+    def test_writer_must_be_dict(self):
+        with pytest.raises(YamlConfigError, match="'writer' must be a mapping"):
+            parse_writer("not_a_dict")
+
+    def test_writer_config_must_be_dict(self):
+        with pytest.raises(YamlConfigError, match="'writer.config' must be a mapping"):
+            parse_writer({"kind": "duckdb", "config": "bad"})
+
+    # -- DuckDB --
+
+    def test_duckdb_basic(self, tmp_path):
+        db_path = str(tmp_path / "test.duckdb")
+        result = parse_writer({"kind": "duckdb", "config": {"path": db_path}})
+        assert result.kind == WriterKind.DUCKDB
+        assert isinstance(result.config, DuckdbWriterConfig)
+        assert result.config.connection is not None
+
+    def test_duckdb_missing_path_raises(self):
+        with pytest.raises(
+            YamlConfigError, match="DuckDB writer requires 'config.path'"
+        ):
+            parse_writer({"kind": "duckdb", "config": {}})
+
+    def test_duckdb_path_must_be_string(self):
+        with pytest.raises(YamlConfigError, match="'config.path' must be a string"):
+            parse_writer({"kind": "duckdb", "config": {"path": 123}})
+
+    # -- Delta Lake --
+
+    def test_delta_lake_basic(self):
+        result = parse_writer(
+            {
+                "kind": "delta_lake",
+                "config": {"data_uri": "s3://bucket/delta"},
+            }
+        )
+        assert result.kind == WriterKind.DELTA_LAKE
+        assert isinstance(result.config, DeltaLakeWriterConfig)
+        assert result.config.data_uri == "s3://bucket/delta"
+
+    def test_delta_lake_with_options(self):
+        result = parse_writer(
+            {
+                "kind": "delta_lake",
+                "config": {
+                    "data_uri": "/data/delta",
+                    "partition_by": {"logs": ["block_number"]},
+                    "storage_options": {"key": "val"},
+                    "anchor_table": "logs",
+                },
+            }
+        )
+        assert result.config.partition_by == {"logs": ["block_number"]}
+        assert result.config.storage_options == {"key": "val"}
+        assert result.config.anchor_table == "logs"
+
+    def test_delta_lake_missing_data_uri_raises(self):
+        with pytest.raises(
+            YamlConfigError, match="Delta Lake writer requires 'config.data_uri'"
+        ):
+            parse_writer({"kind": "delta_lake", "config": {}})
+
+    # -- PyArrow Dataset --
+
+    def test_pyarrow_dataset_basic(self):
+        result = parse_writer(
+            {
+                "kind": "pyarrow_dataset",
+                "config": {"base_dir": "/data/output"},
+            }
+        )
+        assert result.kind == WriterKind.PYARROW_DATASET
+        assert isinstance(result.config, PyArrowDatasetWriterConfig)
+        assert result.config.base_dir == "/data/output"
+
+    def test_pyarrow_dataset_with_options(self):
+        result = parse_writer(
+            {
+                "kind": "pyarrow_dataset",
+                "config": {
+                    "base_dir": "/data/output",
+                    "basename_template": "part-{i}.parquet",
+                    "use_threads": False,
+                    "max_partitions": 512,
+                    "max_open_files": 256,
+                    "max_rows_per_file": 1000000,
+                    "min_rows_per_group": 100,
+                    "max_rows_per_group": 500000,
+                    "create_dir": False,
+                    "anchor_table": "events",
+                    "partitioning": {"events": ["date"]},
+                    "partitioning_flavor": {"events": "hive"},
+                },
+            }
+        )
+        cfg = result.config
+        assert cfg.basename_template == "part-{i}.parquet"
+        assert cfg.use_threads is False
+        assert cfg.max_partitions == 512
+        assert cfg.max_open_files == 256
+        assert cfg.max_rows_per_file == 1000000
+        assert cfg.min_rows_per_group == 100
+        assert cfg.max_rows_per_group == 500000
+        assert cfg.create_dir is False
+        assert cfg.anchor_table == "events"
+        assert cfg.partitioning == {"events": ["date"]}
+        assert cfg.partitioning_flavor == {"events": "hive"}
+
+    def test_pyarrow_dataset_missing_base_dir_raises(self):
+        with pytest.raises(
+            YamlConfigError, match="PyArrow dataset writer requires 'config.base_dir'"
+        ):
+            parse_writer({"kind": "pyarrow_dataset", "config": {}})
+
+    # -- Default empty config --
+
+    def test_duckdb_default_config_key(self):
+        """When 'config' key is omitted, it defaults to empty dict and raises."""
+        with pytest.raises(
+            YamlConfigError, match="DuckDB writer requires 'config.path'"
+        ):
+            parse_writer({"kind": "duckdb"})
+
+
+# ---------------------------------------------------------------------------
+# Table aliases parsing
+# ---------------------------------------------------------------------------
+
+
+class TestParseTableAliases:
+    def test_evm_basic(self):
+        result = parse_table_aliases({"blocks": "my_blocks", "logs": "my_logs"}, "evm")
+        assert isinstance(result, EvmTableAliases)
+        assert result.blocks == "my_blocks"
+        assert result.logs == "my_logs"
+        assert result.transactions is None
+        assert result.traces is None
+
+    def test_evm_all_fields(self):
+        result = parse_table_aliases(
+            {"blocks": "b", "transactions": "t", "logs": "l", "traces": "tr"},
+            "evm",
+        )
+        assert result.blocks == "b"
+        assert result.transactions == "t"
+        assert result.logs == "l"
+        assert result.traces == "tr"
+
+    def test_svm_basic(self):
+        result = parse_table_aliases(
+            {"blocks": "my_blocks", "instructions": "my_ixs"}, "svm"
+        )
+        assert isinstance(result, SvmTableAliases)
+        assert result.blocks == "my_blocks"
+        assert result.instructions == "my_ixs"
+        assert result.transactions is None
+
+    def test_svm_all_fields(self):
+        result = parse_table_aliases(
+            {
+                "blocks": "b",
+                "transactions": "t",
+                "instructions": "i",
+                "logs": "l",
+                "balances": "bal",
+                "token_balances": "tb",
+                "rewards": "r",
+            },
+            "svm",
+        )
+        assert result.blocks == "b"
+        assert result.rewards == "r"
+        assert result.token_balances == "tb"
+
+    def test_evm_unknown_key_raises(self):
+        with pytest.raises(YamlConfigError, match="Unknown EVM table alias keys"):
+            parse_table_aliases({"blocks": "b", "instructions": "i"}, "evm")
+
+    def test_svm_unknown_key_raises(self):
+        with pytest.raises(YamlConfigError, match="Unknown SVM table alias keys"):
+            parse_table_aliases({"traces": "tr"}, "svm")
+
+    def test_unknown_query_kind_raises(self):
+        with pytest.raises(YamlConfigError, match="Cannot determine table alias type"):
+            parse_table_aliases({"blocks": "b"}, "unknown")
+
+    def test_must_be_dict(self):
+        with pytest.raises(YamlConfigError, match="'table_aliases' must be a mapping"):
+            parse_table_aliases("not_a_dict", "evm")
+
+    def test_empty_dict_evm(self):
+        result = parse_table_aliases({}, "evm")
+        assert isinstance(result, EvmTableAliases)
+        assert result.blocks is None
+
+    def test_empty_dict_svm(self):
+        result = parse_table_aliases({}, "svm")
+        assert isinstance(result, SvmTableAliases)
+        assert result.blocks is None
