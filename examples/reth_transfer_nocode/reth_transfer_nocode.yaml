@@ -1,0 +1,63 @@
+# rETH Transfer indexing pipeline — no-code YAML config
+#
+# Indexes Transfer events from the Rocket Pool rETH token contract (rETH).
+#
+# Usage:
+#   cd examples/reth_transfer_nocode
+#   tiders start
+
+project:
+  name: rETH_transfer
+  description: Index rETH Transfer events from the Rocket Pool rETH token contract.
+  repository: https://github.com/yulesa/tiders/example/reth_transfer_nocode
+
+provider:
+  kind: hypersync
+  url: ${PROVIDER_URL}
+  bearer_token: ${HYPERSYNC_BEARER_TOKEN}
+  
+
+contracts:
+  - name: RocketTokenRETH
+    address: 0xae78736Cd615f374D3085123A210448E74Fc6393
+    abi: ./RocketTokenRETH.abi.json
+
+query:
+  kind: evm
+  from_block: 13325304
+  to_block: 13325404
+  logs:
+    - topic0: "Transfer(address,address,uint256)"
+      include_blocks: true
+  fields:
+    log: [address, topic0, topic1, topic2, topic3, data, block_number, transaction_hash, log_index]
+    block: [number, timestamp]
+
+steps:
+  - kind: evm_decode_events
+    config:
+      event_signature: "Transfer(address indexed from, address indexed to, uint256 amount)"
+      output_table: transfers
+      allow_decode_fail: true
+
+  - kind: cast_by_type
+    name: i256_to_i128
+    config:
+      from_type: "decimal256(76,0)"
+      to_type: "decimal128(38,0)"
+      allow_cast_fail: true
+
+  - kind: hex_encode
+
+  - kind: sql
+    config:
+      queries:
+        - >
+          SELECT transfers.*, blocks.timestamp AS block_timestamp
+          FROM transfers
+          INNER JOIN blocks ON blocks.number = transfers.block_number
+
+writer:
+  kind: delta_lake
+  config:
+    data_uri: data/pyarrow
