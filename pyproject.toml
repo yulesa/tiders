@@ -28,6 +28,9 @@ datafusion = ["datafusion>=50.1.0"]
 cli = ["pyyaml>=6.0", "click>=8.0", "python-dotenv>=1.0"]
 all = ["tiders[duckdb,clickhouse,delta_lake,iceberg,polars,datafusion,cli]"]
 
+[project.scripts]
+tiders = "tiders.cli.main:main"
+
 [dependency-groups]
 dev = [
     "dotenv>=0.9.9",
