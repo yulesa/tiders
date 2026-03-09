@@ -6,6 +6,11 @@ Top-level
 ---------
 - ``parse_tiders_yaml``     — main parser function. Aggregates all section parsers into a single call
 
+Project info parsing
+--------------------
+- ``ProjectInfo``           — dataclass holding project metadata (name, description, repository)
+- ``parse_project_info``    — main parser for the ``project:`` YAML section
+
 Contract parsing
 ----------------
 - ``ContractInfo``          — dataclass holding resolved ABI metadata
@@ -139,6 +144,7 @@ class YamlConfigError(Exception):
 def parse_tiders_yaml(
     raw_config: dict[str, Any], yaml_dir: Path
 ) -> tuple[
+    "ProjectInfo",
     ProviderConfig,
     Query,
     list[Step],
@@ -148,8 +154,8 @@ def parse_tiders_yaml(
 ]:
     """Parse a complete YAML config into its individual components.
 
-    Aggregates all section parsers: contracts, provider, query, steps, writer,
-    and table_aliases.
+    Aggregates all section parsers: project, contracts, provider, query, steps,
+    writer, and table_aliases.
 
     Args:
         raw_config: The parsed YAML dict (after env substitution).
@@ -157,8 +163,11 @@ def parse_tiders_yaml(
             relative paths (ABIs, Python files, etc.).
 
     Returns:
-        A tuple of ``(provider, query, steps, writer, table_aliases, contracts)``.
+        A tuple of ``(project, provider, query, steps, writer, table_aliases, contracts)``.
     """
+    # Parse project metadata
+    project = parse_project_info(raw_config.get("project"))
+
     # Parse contracts and resolve references
     contracts: dict[str, ContractInfo] = {}
     if "contracts" in raw_config:
@@ -191,7 +200,72 @@ def parse_tiders_yaml(
             raw_config["table_aliases"], query.kind.value
         )
 
-    return provider, query, steps, writer, table_aliases, contracts
+    return project, provider, query, steps, writer, table_aliases, contracts
+
+
+# ---------------------------------------------------------------------------
+# Project info parsing
+# ---------------------------------------------------------------------------
+
+
+@dataclasses.dataclass
+class ProjectInfo:
+    """Project metadata from the top-level ``project:`` YAML section.
+
+    Attributes:
+        name: Short identifier for the project (required).
+        description: Human-readable description (required).
+        repository: Optional URL to the project's source repository.
+    """
+
+    name: str
+    description: str
+    repository: Optional[str] = None
+
+
+def parse_project_info(raw: Any) -> ProjectInfo:
+    """Parse the ``project`` YAML section into a ProjectInfo dataclass.
+
+    Args:
+        raw: The raw value from the ``project:`` key, or ``None`` if absent.
+
+    Returns:
+        A ``ProjectInfo`` instance.
+
+    Raises:
+        YamlConfigError: If ``project`` is missing, not a mapping, or lacks
+            required keys ``name`` / ``description``.
+    """
+    if raw is None:
+        raise YamlConfigError(
+            "Missing required 'project' section. Add a 'project:' block with "
+            "'name' and 'description'.",
+        )
+    if not isinstance(raw, dict):
+        raise YamlConfigError(
+            "'project' must be a mapping with 'name' and 'description' keys.",
+            "project",
+        )
+
+    valid_keys = {"name", "description", "repository"}
+    unknown = set(raw.keys()) - valid_keys
+    if unknown:
+        raise YamlConfigError(
+            f"Unknown project keys: {sorted(unknown)}. "
+            f"Valid keys: {sorted(valid_keys)}.",
+            "project",
+        )
+
+    if "name" not in raw:
+        raise YamlConfigError("Missing required key 'name'.", "project")
+    if "description" not in raw:
+        raise YamlConfigError("Missing required key 'description'.", "project")
+
+    return ProjectInfo(
+        name=raw["name"],
+        description=raw["description"],
+        repository=raw.get("repository"),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -214,8 +288,8 @@ def parse_contracts(
 ) -> dict[str, ContractInfo]:
     """Parse the ``contracts`` YAML section into a lookup table.
 
-    Each contract entry has a ``name`` and ``details`` list. The first detail
-    with an ``abi`` path is used to extract events/functions.
+    Each contract entry requires a ``name`` and optionally ``address`` and
+    ``abi`` keys directly on the entry.
     """
     result: dict[str, ContractInfo] = {}
     for i, contract in enumerate(contracts_list):
@@ -225,21 +299,21 @@ def parse_contracts(
         name = contract["name"]
         ctx = f"contracts[{i}] ({name})"
 
-        details = contract.get("details")
-        if not details:
+        valid_keys = {"name", "address", "abi"}
+        unknown = set(contract.keys()) - valid_keys
+        if unknown:
             raise YamlConfigError(
-                "Missing or empty 'details' list. Each contract needs at least "
-                "one detail entry with an address and optionally an ABI path.",
+                f"Unknown contract keys: {sorted(unknown)}. "
+                f"Valid keys: {sorted(valid_keys)}.",
                 ctx,
             )
 
-        detail = details[0]
-        address = detail.get("address", "")
+        address = contract.get("address", "")
 
         events: dict[str, dict[str, str]] = {}
         functions: dict[str, dict[str, str]] = {}
 
-        abi_path_str = detail.get("abi")
+        abi_path_str = contract.get("abi")
         if abi_path_str is not None:
             abi_path = Path(abi_path_str)
             if not abi_path.is_absolute():
@@ -248,7 +322,7 @@ def parse_contracts(
                 raise YamlConfigError(
                     f"ABI file not found: {abi_path}. Check that the path is "
                     f"correct relative to the YAML config directory ({yaml_dir}).",
-                    f"{ctx}.details[0].abi",
+                    f"{ctx}.abi",
                 )
             abi_json = abi_path.read_text()
 
@@ -266,7 +340,7 @@ def parse_contracts(
             except Exception as e:
                 raise YamlConfigError(
                     f"Failed to parse ABI file {abi_path}: {e}",
-                    f"{ctx}.details[0].abi",
+                    f"{ctx}.abi",
                 ) from e
 
         result[name] = ContractInfo(

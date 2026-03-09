@@ -28,6 +28,7 @@ import click
 
 from .env import load_and_substitute
 from .tiders_yaml_parser import (
+    ProjectInfo,
     YamlConfigError,
     parse_tiders_yaml,
 )
@@ -178,7 +179,7 @@ def start(
     # Parse all sections
     try:
         yaml_dir = yaml_path.parent
-        provider, query, steps, writer, table_aliases, _contracts = parse_tiders_yaml(
+        project, provider, query, steps, writer, table_aliases, _contracts = parse_tiders_yaml(
             raw_config, yaml_dir
         )
 
@@ -203,26 +204,18 @@ def start(
         table_aliases=table_aliases,
     )
 
-    logger.info("Starting pipeline...")
+    logger.info(f"Starting {project.name} pipeline...")
 
-    print("Pipeline configuration:")
-    print(f"Contracts: {_contracts}")
-    print(f"Provider: {provider}")
-    print(f"Query: {query}")
-    print(f"Steps: {[step.kind for step in steps]}")
-    print(f"Writer: {writer}")
-    print(f"Table Aliases: {table_aliases}")
+    # Run
+    from tiders.pipeline import run_pipeline
 
-    # # Run
-    # from tiders.pipeline import run_pipeline
-
-    # try:
-    #     asyncio.run(run_pipeline(pipeline, pipeline_name=yaml_path.stem))
-    # except KeyboardInterrupt:
-    #     logger.info("Pipeline interrupted by user.")
-    #     sys.exit(130)
-    # except Exception as exc:
-    #     logger.error(f"Pipeline failed: {exc}", exc_info=True)
-    #     sys.exit(1)
+    try:
+        asyncio.run(run_pipeline(pipeline, pipeline_name=yaml_path.stem))
+    except KeyboardInterrupt:
+        logger.info("Pipeline interrupted by user.")
+        sys.exit(130)
+    except Exception as exc:
+        logger.error(f"Pipeline failed: {exc}", exc_info=True)
+        sys.exit(1)
 
     logger.info("Pipeline completed successfully.")
