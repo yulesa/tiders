@@ -1,0 +1,57 @@
+# ERC20 Transfer indexing pipeline — no-code YAML config
+#
+# This is the YAML equivalent of examples/erc20_custom.py.
+# It ingests ERC20 Transfer events, decodes them, joins block timestamps,
+# and writes results to a local DuckDB database.
+#
+# Usage:
+#   tiders start examples/erc20_custom_nocode/erc20_custom_nocode.yaml
+#
+# After running, query the result:
+#   duckdb data/transfers.duckdb
+#   SELECT * FROM transfers LIMIT 3;
+
+provider:
+  kind: hypersync
+  url: ${PROVIDER_URL}
+
+query:
+  kind: evm
+  from_block: 0
+  logs:
+    - topic0: "Transfer(address,address,uint256)"
+      include_blocks: true
+  fields:
+    log: [address, topic0, topic1, topic2, topic3, data, block_number, transaction_hash, log_index]
+    block: [number, timestamp]
+
+steps:
+  - kind: evm_decode_events
+    config:
+      event_signature: "Transfer(address indexed from, address indexed to, uint256 amount)"
+      output_table: transfers
+      allow_decode_fail: true
+
+  - kind: sql
+    config:
+      queries:
+        - >
+          CREATE TABLE transfers AS
+          SELECT transfers.*, blocks.timestamp AS block_timestamp
+          FROM transfers
+          INNER JOIN blocks ON blocks.number = transfers.block_number
+
+  - kind: hex_encode
+
+  - kind: cast_by_type
+    name: i256_to_i128
+    config:
+      from_type: "decimal256(76,0)"
+      to_type: "decimal128(38,0)"
+      allow_cast_fail: true
+
+writer:
+  kind: pyarrow_dataset
+  config:
+    base_dir: data/pyarrow
+    test: daos
