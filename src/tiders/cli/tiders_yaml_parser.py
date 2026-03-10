@@ -309,6 +309,8 @@ def parse_contracts(
             )
 
         address = contract.get("address", "")
+        if isinstance(address, int):
+            address = hex(address)
 
         events: dict[str, dict[str, str]] = {}
         functions: dict[str, dict[str, str]] = {}
@@ -576,6 +578,13 @@ def parse_evm_query(raw: dict[str, Any]) -> evm.Query:
     return evm.Query(**kwargs)
 
 
+def _normalize_hex_value(val: Any) -> Any:
+    """Convert an integer parsed from a YAML 0x-hex literal back to a hex string."""
+    if isinstance(val, int):
+        return hex(val)
+    return val
+
+
 def _parse_evm_request(raw: dict[str, Any], request_cls: type, path: str) -> Any:
     """Parse a single EVM request (log, transaction, or trace) from YAML."""
     valid = {f.name for f in dataclasses.fields(request_cls)}
@@ -595,6 +604,9 @@ def _parse_evm_request(raw: dict[str, Any], request_cls: type, path: str) -> Any
         # List fields: wrap single values in a list
         if f.default_factory is list and not isinstance(val, list):
             val = [val]
+        # YAML may parse 0x-prefixed hex literals as integers; normalize them back
+        if f.default_factory is list and isinstance(val, list):
+            val = [_normalize_hex_value(v) for v in val]
         kwargs[f.name] = val
     return request_cls(**kwargs)
 
@@ -604,8 +616,10 @@ def _is_hex_hash(s: str) -> bool:
     return s.startswith("0x") and len(s) == 66
 
 
-def _resolve_topic0(value: str) -> str:
+def _resolve_topic0(value: Any) -> str:
     """Accept either a raw hex hash or an event signature, return topic0 hash."""
+    if isinstance(value, int):
+        value = hex(value)
     if _is_hex_hash(value):
         return value
     return evm_signature_to_topic0(value)
@@ -1043,36 +1057,44 @@ def _build_sql_runner(
 ) -> Any:
     """Build a DataFusion runner function that executes a list of SQL queries.
 
-    Each SQL query is executed against the session context. The last query's
-    result for each table name is kept. Tables referenced in FROM clauses are
-    automatically registered.
+    For ``CREATE TABLE name AS SELECT ...`` queries, the table is registered
+    in the session context and then retrieved via ``ctx.table(name)`` (since
+    the DDL result itself is empty). For plain ``SELECT ...`` queries, the
+    result DataFrame is stored under ``"sql_result"``.
     """
 
-    def sql_runner(ctx: Any, tables: dict, context: Any) -> dict:
+    def sql_runner(session_ctx: Any, tables: dict, context: Any) -> dict:
         result = dict(tables)
         for sql in queries:
-            df = ctx.sql(sql)
-            # Use the table alias from the SQL if available;
-            # otherwise use "sql_result"
-            result_name = _extract_table_name_from_sql(sql) or "sql_result"
-            result[result_name] = df
+            # extracting using a regex is easier because extracting table names from ctx makes it hard to catch table updates (same name).
+            result_name = _extract_table_name_from_sql(sql)
+            df = session_ctx.sql(sql)
+            if result_name:
+                # CREATE TABLE registers the table in the session context;
+                # retrieve it back since the DDL result itself is empty.
+                result[result_name] = session_ctx.table(result_name)
+            else:
+                result["sql_result"] = df
         return result
 
     return sql_runner
 
 
 def _extract_table_name_from_sql(sql: str) -> Optional[str]:
-    """Try to extract a destination table name from CREATE TABLE ... AS or
+    """Try to extract a destination name from CREATE TABLE/VIEW ... AS or
     just return None for plain SELECT queries."""
-    # Match: CREATE TABLE <name> AS ...
+    # Match: CREATE [OR REPLACE] TABLE|VIEW [IF NOT EXISTS] <name> AS ...
     m = re.match(
-        r"^\s*CREATE\s+(?:OR\s+REPLACE\s+)?TABLE\s+(\w+)\s+AS\s+",
+        r"^\s*CREATE\s+(?:OR\s+REPLACE\s+)?(?:TABLE|VIEW)\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)\s+AS\s+",
         sql,
         re.IGNORECASE,
     )
     if m:
         return m.group(1)
     return None
+
+
+# Python file step loader
 
 
 def _load_python_file_step(raw: dict[str, Any], path: str, yaml_dir: Path) -> Step:
