@@ -27,7 +27,8 @@ query:
   from_block: 13325304
   to_block: 13325404
   logs:
-    - topic0: "Transfer(address,address,uint256)"
+    - address: RocketTokenRETH.address
+      topic0: "Transfer(address,address,uint256)"
       include_blocks: true
   fields:
     log: [address, topic0, topic1, topic2, topic3, data, block_number, transaction_hash, log_index]
@@ -53,11 +54,12 @@ steps:
     config:
       queries:
         - >
+          CREATE OR REPLACE TABLE transfers AS
           SELECT transfers.*, blocks.timestamp AS block_timestamp
           FROM transfers
           INNER JOIN blocks ON blocks.number = transfers.block_number
 
 writer:
-  kind: delta_lake
+  kind: pyarrow_dataset
   config:
-    data_uri: data/pyarrow
+    base_dir: data/pyarrow
