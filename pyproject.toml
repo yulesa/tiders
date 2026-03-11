@@ -27,7 +27,7 @@ iceberg = ["pyiceberg>=0.10.0"]
 polars = ["polars>=1.34.0"]
 pandas = ["pandas>=2.0.0"]
 datafusion = ["datafusion>=50.1.0"]
-postgresql = ["psycopg>=3.1.0"]
+postgresql = ["psycopg[binary]>=3.1.0"]
 all = ["tiders[duckdb,clickhouse,delta_lake,iceberg,polars,pandas,datafusion,postgresql]"]
 
 [project.scripts]
