@@ -9,6 +9,7 @@ from ..config import (
     DeltaLakeWriterConfig,
     PyArrowDatasetWriterConfig,
     DuckdbWriterConfig,
+    PostgresqlWriterConfig,
 )
 import logging
 
@@ -54,5 +55,10 @@ def create_writer(writer: Writer) -> DataWriter:
 
             assert isinstance(writer.config, DuckdbWriterConfig)
             return duckdb.Writer(writer.config)
+        case WriterKind.POSTGRESQL:
+            from . import postgresql
+
+            assert isinstance(writer.config, PostgresqlWriterConfig)
+            return postgresql.Writer(writer.config)
         case _:
             raise ValueError(f"Invalid writer kind: {writer.kind}")

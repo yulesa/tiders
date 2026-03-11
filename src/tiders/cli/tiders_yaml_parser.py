@@ -106,6 +106,7 @@ from tiders.config import (
     IcebergWriterConfig,
     PandasStepConfig,
     PolarsStepConfig,
+    PostgresqlWriterConfig,
     PyArrowDatasetWriterConfig,
     SetChainIdConfig,
     Step,
@@ -1451,6 +1452,8 @@ def parse_writer(writer_raw: dict[str, Any]) -> Writer:
         config = _parse_iceberg_writer(raw_config, config_path)
     elif kind == WriterKind.PYARROW_DATASET:
         config = _parse_pyarrow_dataset_writer(raw_config, config_path)
+    elif kind == WriterKind.POSTGRESQL:
+        config = _parse_postgresql_writer(raw_config, config_path)
     else:
         raise YamlConfigError(
             f"Writer kind '{kind_str}' is not yet supported in YAML mode.",
@@ -1707,6 +1710,70 @@ def _parse_pyarrow_dataset_writer(
         config_kwargs["partitioning_flavor"] = raw["partitioning_flavor"]
 
     return PyArrowDatasetWriterConfig(**config_kwargs)
+
+
+def _parse_postgresql_writer(raw: dict[str, Any], path: str) -> PostgresqlWriterConfig:
+    """Parse PostgreSQL writer config and open an async connection.
+
+    Opens a ``psycopg.AsyncConnection`` from the provided connection parameters.
+    Uses ``asyncio`` to run the async connection constructor synchronously.
+    """
+    import asyncio
+
+    valid_keys = {
+        "host",
+        "port",
+        "user",
+        "password",
+        "dbname",
+        "schema",
+        "anchor_table",
+        "create_tables",
+    }
+    unknown = set(raw.keys()) - valid_keys
+    if unknown:
+        raise YamlConfigError(
+            f"Unknown PostgreSQL writer config keys: {sorted(unknown)}. "
+            f"Valid keys: {sorted(valid_keys)}.",
+            path,
+        )
+
+    if "host" not in raw:
+        raise YamlConfigError("PostgreSQL writer requires 'config.host'.", path)
+    if "dbname" not in raw:
+        raise YamlConfigError("PostgreSQL writer requires 'config.dbname'.", path)
+
+    if importlib.util.find_spec("psycopg") is None:
+        raise YamlConfigError(
+            "PostgreSQL writer requires the 'psycopg' package. "
+            "Install it with: pip install tiders[postgresql]",
+            path,
+        )
+    import psycopg
+
+    conninfo_parts = [
+        f"host={raw['host']}",
+        f"port={raw.get('port', 5432)}",
+        f"dbname={raw['dbname']}",
+        f"user={raw.get('user', 'postgresql')}",
+    ]
+    if "password" in raw:
+        conninfo_parts.append(f"password={raw['password']}")
+    conninfo = " ".join(conninfo_parts)
+
+    connection = asyncio.get_event_loop().run_until_complete(
+        psycopg.AsyncConnection.connect(conninfo, autocommit=False)
+    )
+
+    config_kwargs: dict[str, Any] = {"connection": connection}
+    if "schema" in raw:
+        config_kwargs["schema"] = raw["schema"]
+    if "anchor_table" in raw:
+        config_kwargs["anchor_table"] = raw["anchor_table"]
+    if "create_tables" in raw:
+        config_kwargs["create_tables"] = raw["create_tables"]
+
+    return PostgresqlWriterConfig(**config_kwargs)
 
 
 # ---------------------------------------------------------------------------

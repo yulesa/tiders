@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     import polars as pl
     import datafusion
     import pandas as pd
+    import psycopg
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,7 @@ class WriterKind(str, Enum):
     DELTA_LAKE = "delta_lake"
     PYARROW_DATASET = "pyarrow_dataset"
     DUCKDB = "duckdb"
+    POSTGRESQL = "postgresql"
 
 
 class StepKind(str, Enum):
@@ -212,6 +214,34 @@ class DuckdbWriterConfig:
 
 
 @dataclass
+class PostgresqlWriterConfig:
+    """Configuration for the PostgreSQL writer.
+
+    Inserts Arrow data into PostgreSQL using the COPY protocol via ``psycopg`` v3.
+    Tables are created automatically on the first push using the Arrow schema.
+    All tables except the ``anchor_table`` are inserted in parallel.
+
+    List, Struct, and Map columns are not supported — use a step to flatten or
+    drop those columns before writing. See the PostgreSQL writer docs for the
+    full list of raw blockchain fields that require preprocessing.
+
+    Attributes:
+        connection: An open ``psycopg.AsyncConnection`` instance.
+        schema: The PostgreSQL schema (namespace) to write tables into.
+            Defaults to ``"public"``.
+        anchor_table: If set, this table is written last (after all others) to
+            provide ordering guarantees for downstream consumers.
+        create_tables: When ``True`` (the default), tables are created via
+            ``CREATE TABLE IF NOT EXISTS`` on the first push using the Arrow schema.
+    """
+
+    connection: "psycopg.AsyncConnection[Any]"
+    schema: str = "public"
+    anchor_table: Optional[str] = None
+    create_tables: bool = True
+
+
+@dataclass
 class Writer:
     """Pairs a :class:`WriterKind` with its backend-specific configuration.
 
@@ -227,6 +257,7 @@ class Writer:
         | DeltaLakeWriterConfig
         | PyArrowDatasetWriterConfig
         | DuckdbWriterConfig
+        | PostgresqlWriterConfig
     )
 
 
@@ -613,4 +644,5 @@ __all__ = [
     "DeltaLakeWriterConfig",
     "PyArrowDatasetWriterConfig",
     "DuckdbWriterConfig",
+    "PostgresqlWriterConfig",
 ]
