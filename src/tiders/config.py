@@ -13,19 +13,21 @@ This module defines every configuration type used to assemble a pipeline:
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Callable
+from typing import Any, Dict, List, Optional, Callable, TYPE_CHECKING
 
 from tiders_core.ingest import ProviderConfig, Query
 from tiders_core.svm_decode import InstructionSignature, LogSignature
-from clickhouse_connect.driver.asyncclient import AsyncClient as ClickHouseClient
-from pyiceberg.catalog import Catalog as IcebergCatalog
-import deltalake
 import pyarrow as pa
 import pyarrow.dataset as pa_dataset
 import pyarrow.fs as pa_fs
-import duckdb
-import polars as pl
-import datafusion
+
+if TYPE_CHECKING:
+    from clickhouse_connect.driver.asyncclient import AsyncClient as ClickHouseClient
+    from pyiceberg.catalog import Catalog as IcebergCatalog
+    import deltalake
+    import duckdb
+    import polars as pl
+    import datafusion
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +81,7 @@ class IcebergWriterConfig:
     """
 
     namespace: str
-    catalog: IcebergCatalog
+    catalog: "IcebergCatalog"
     write_location: str
 
 
@@ -102,7 +104,7 @@ class DeltaLakeWriterConfig:
     data_uri: str
     partition_by: Dict[str, list[str]] = field(default_factory=dict)
     storage_options: Optional[Dict[str, str]] = None
-    writer_properties: Optional[deltalake.WriterProperties] = None
+    writer_properties: Optional["deltalake.WriterProperties"] = None
     anchor_table: Optional[str] = None
 
 
@@ -141,7 +143,7 @@ class ClickHouseWriterConfig:
             the first insert using the Arrow schema.
     """
 
-    client: ClickHouseClient
+    client: "ClickHouseClient"
     codec: Dict[str, Dict[str, str]] = field(default_factory=dict)
     order_by: Dict[str, List[str]] = field(default_factory=dict)
     engine: str = "MergeTree()"
@@ -204,7 +206,7 @@ class DuckdbWriterConfig:
             on the first push if they don't already exist.
     """
 
-    connection: duckdb.DuckDBPyConnection
+    connection: "duckdb.DuckDBPyConnection"
 
 
 @dataclass
@@ -424,7 +426,9 @@ class PolarsStepConfig:
             ``runner``.
     """
 
-    runner: Callable[[Dict[str, pl.DataFrame], Optional[Any]], Dict[str, pl.DataFrame]]
+    runner: Callable[
+        [Dict[str, "pl.DataFrame"], Optional[Any]], Dict[str, "pl.DataFrame"]
+    ]
     context: Optional[Any] = None
 
 
@@ -445,8 +449,8 @@ class DataFusionStepConfig:
     """
 
     runner: Callable[
-        [datafusion.SessionContext, Dict[str, datafusion.DataFrame], Optional[Any]],
-        Dict[str, datafusion.DataFrame],
+        ["datafusion.SessionContext", Dict[str, "datafusion.DataFrame"], Optional[Any]],
+        Dict[str, "datafusion.DataFrame"],
     ]
     context: Optional[Any] = None
 

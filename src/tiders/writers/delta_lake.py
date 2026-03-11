@@ -10,10 +10,14 @@ from copy import deepcopy
 import asyncio
 
 import pyarrow as pa
-from deltalake import write_deltalake
 
 from ..config import DeltaLakeWriterConfig
 from ..writers.base import DataWriter
+
+try:
+    from deltalake import write_deltalake
+except ImportError:
+    write_deltalake = None
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +31,11 @@ class Writer(DataWriter):
     """
 
     def __init__(self, config: DeltaLakeWriterConfig):
+        if write_deltalake is None:
+            raise ImportError(
+                "Delta Lake writer requires the deltalake package. "
+                "Install it with: pip install tiders[delta_lake]"
+            )
         self.config = deepcopy(config)
         self.config.data_uri = self.config.data_uri.rstrip("/")
 
@@ -35,14 +44,17 @@ class Writer(DataWriter):
         if table_data.num_rows == 0:
             return
 
+        _write = write_deltalake
+        assert _write is not None
         await asyncio.to_thread(
-            write_deltalake,
-            table_or_uri=f"{self.config.data_uri}/{table_name}",
-            data=table_data,
-            partition_by=self.config.partition_by.get(table_name, None),
-            mode="append",
-            schema_mode="merge",
-            storage_options=self.config.storage_options,
+            lambda: _write(
+                table_or_uri=f"{self.config.data_uri}/{table_name}",
+                data=table_data,
+                partition_by=self.config.partition_by.get(table_name, None),
+                mode="append",
+                schema_mode="merge",
+                storage_options=self.config.storage_options,
+            )
         )
 
     async def push_data(self, data: Dict[str, pa.Table]) -> None:

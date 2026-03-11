@@ -135,11 +135,15 @@ def process_steps(
             assert isinstance(step.config, CastByTypeConfig)
             data = step_def.cast_by_type.execute(data, step.config)
         elif step.kind == StepKind.DATAFUSION:
+            from .steps import datafusion_step
+
             assert isinstance(step.config, DataFusionStepConfig)
-            data = step_def.datafusion_step.execute(data, step.config)
+            data = datafusion_step.execute(data, step.config)
         elif step.kind == StepKind.POLARS:
+            from .steps import polars_step
+
             assert isinstance(step.config, PolarsStepConfig)
-            data = step_def.polars_step.execute(data, step.config)
+            data = polars_step.execute(data, step.config)
         elif step.kind == StepKind.SET_CHAIN_ID:
             assert isinstance(step.config, SetChainIdConfig)
             data = step_def.set_chain_id.execute(data, step.config)

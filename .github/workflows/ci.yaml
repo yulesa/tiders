@@ -23,7 +23,7 @@ jobs:
       - uses: astral-sh/setup-uv@v3
       - run: sudo apt-get update && sudo apt-get install -y capnproto
       - name: Install dependencies
-        run: uv sync
+        run: uv sync --extra all
       - name: Ruff check
         run: uv run ruff check
       - name: Ruff format

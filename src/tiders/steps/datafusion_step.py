@@ -4,7 +4,11 @@ from typing import Dict
 
 from ..config import DataFusionStepConfig
 import pyarrow as pa
-import datafusion
+
+try:
+    import datafusion
+except ImportError:
+    datafusion = None
 
 
 def execute(
@@ -13,7 +17,7 @@ def execute(
     """Run a user-supplied function using a DataFusion session context.
 
     Converts all PyArrow Tables to DataFusion DataFrames within a fresh
-    ``SessionContext``, invokes ``config.runner(ctx, dataframes, context)``,
+    ``SessionContext``, invokes ``config.runner(session_ctx, dataframes, context)``,
     and converts the returned DataFrames back to PyArrow Tables.
 
     Args:
@@ -24,18 +28,23 @@ def execute(
     Returns:
         A new data dictionary with the transformed tables.
     """
+    if datafusion is None:
+        raise ImportError(
+            "DataFusion step requires the datafusion package. "
+            "Install it with: pip install tiders[datafusion]"
+        )
     df_data = {}
 
-    ctx = datafusion.SessionContext()
+    session_ctx = datafusion.SessionContext()
 
     for name, table in data.items():
-        df_data[name] = ctx.create_dataframe(
+        df_data[name] = session_ctx.create_dataframe(
             name=name,
             partitions=[table.to_batches()],
             schema=table.schema,
         )
 
-    out = config.runner(ctx, df_data, config.context)
+    out = config.runner(session_ctx, df_data, config.context)
 
     pa_data = {}
 
