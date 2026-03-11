@@ -104,6 +104,7 @@ from tiders.config import (
     GlaciersEventsConfig,
     HexEncodeConfig,
     IcebergWriterConfig,
+    PandasStepConfig,
     PolarsStepConfig,
     PyArrowDatasetWriterConfig,
     SetChainIdConfig,
@@ -854,10 +855,17 @@ def _parse_step(raw: dict[str, Any], index: int, yaml_dir: Path) -> Step:
             f"{path}.kind",
         )
 
-    # Reject polars/datafusion in YAML mode
+    # Reject polars/pandas/datafusion in YAML mode
     if kind == StepKind.POLARS:
         raise YamlConfigError(
             "The 'polars' step kind cannot be used directly in YAML mode "
+            "because it requires a Python callable. Use 'python_file' to "
+            "reference a .py file, or 'sql' for SQL-based transforms.",
+            f"{path}.kind",
+        )
+    if kind == StepKind.PANDAS:
+        raise YamlConfigError(
+            "The 'pandas' step kind cannot be used directly in YAML mode "
             "because it requires a Python callable. Use 'python_file' to "
             "reference a .py file, or 'sql' for SQL-based transforms.",
             f"{path}.kind",
@@ -1160,6 +1168,12 @@ def _load_python_file_step(raw: dict[str, Any], path: str, yaml_dir: Path) -> St
             config=PolarsStepConfig(runner=func, context=context),
             name=raw.get("name"),
         )
+    elif step_type == "pandas":
+        return Step(
+            kind=StepKind.PANDAS,
+            config=PandasStepConfig(runner=func, context=context),
+            name=raw.get("name"),
+        )
     elif step_type == "datafusion":
         return Step(
             kind=StepKind.DATAFUSION,
@@ -1168,7 +1182,7 @@ def _load_python_file_step(raw: dict[str, Any], path: str, yaml_dir: Path) -> St
         )
     else:
         raise YamlConfigError(
-            f"Unknown step_type '{step_type}'. Must be 'polars' or 'datafusion'.",
+            f"Unknown step_type '{step_type}'. Must be 'polars', 'pandas', or 'datafusion'.",
             f"{path}.step_type",
         )
 

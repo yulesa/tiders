@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     import duckdb
     import polars as pl
     import datafusion
+    import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +69,7 @@ class StepKind(str, Enum):
     SET_CHAIN_ID = "set_chain_id"
     DATAFUSION = "datafusion"
     POLARS = "polars"
+    PANDAS = "pandas"
 
 
 @dataclass
@@ -433,6 +435,26 @@ class PolarsStepConfig:
 
 
 @dataclass
+class PandasStepConfig:
+    """Configuration for a custom Pandas transformation step.
+
+    Allows users to supply an arbitrary function that receives all tables as
+    Pandas DataFrames and returns transformed DataFrames.
+
+    Attributes:
+        runner: A callable ``(tables, context) -> tables`` where ``tables`` is a
+            dict mapping table names to ``pandas.DataFrame`` objects.
+        context: An optional user-defined value passed as the second argument to
+            ``runner``.
+    """
+
+    runner: Callable[
+        [Dict[str, "pd.DataFrame"], Optional[Any]], Dict[str, "pd.DataFrame"]
+    ]
+    context: Optional[Any] = None
+
+
+@dataclass
 class DataFusionStepConfig:
     """Configuration for a custom DataFusion transformation step.
 
@@ -536,6 +558,7 @@ class Step:
         | SvmDecodeInstructionsConfig
         | SvmDecodeLogsConfig
         | PolarsStepConfig
+        | PandasStepConfig
         | DataFusionStepConfig
         | GlaciersEventsConfig
         | SetChainIdConfig
@@ -578,6 +601,7 @@ __all__ = [
     "SvmDecodeInstructionsConfig",
     "SvmDecodeLogsConfig",
     "PolarsStepConfig",
+    "PandasStepConfig",
     "DataFusionStepConfig",
     "GlaciersEventsConfig",
     "SetChainIdConfig",

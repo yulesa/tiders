@@ -15,6 +15,7 @@ from .config import (
     CastByTypeConfig,
     CastConfig,
     PolarsStepConfig,
+    PandasStepConfig,
     DataFusionStepConfig,
     EvmDecodeEventsConfig,
     HexEncodeConfig,
@@ -144,6 +145,11 @@ def process_steps(
 
             assert isinstance(step.config, PolarsStepConfig)
             data = polars_step.execute(data, step.config)
+        elif step.kind == StepKind.PANDAS:
+            from .steps import pandas_step
+
+            assert isinstance(step.config, PandasStepConfig)
+            data = pandas_step.execute(data, step.config)
         elif step.kind == StepKind.SET_CHAIN_ID:
             assert isinstance(step.config, SetChainIdConfig)
             data = step_def.set_chain_id.execute(data, step.config)
