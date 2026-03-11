@@ -52,8 +52,9 @@ Steps parsing
 
 Writer parsing
 --------------
-- ``parse_writer``          — main parser for the ``writer:`` section → Writer
-- ``_parse_duckdb_writer``  — DuckDB writer config (opens a connection)
+- ``parse_writer``             — main parser for the ``writer:`` section → Writer
+- ``_parse_single_writer``     — helper to parse a single writer config dict into a Writer dataclass
+- ``_parse_duckdb_writer``     — DuckDB writer config (opens a connection)
 - ``_parse_clickhouse_writer`` — ClickHouse writer config (creates async client)
 - ``_parse_delta_lake_writer`` — Delta Lake writer config
 - ``_parse_iceberg_writer``    — Iceberg writer config (loads catalog)
@@ -151,7 +152,7 @@ def parse_tiders_yaml(
     ProviderConfig,
     Query,
     list[Step],
-    Writer,
+    Writer | list[Writer],
     Optional[EvmTableAliases | SvmTableAliases],
     dict[str, ContractInfo],
 ]:
@@ -1409,20 +1410,35 @@ def _parse_param_inputs(
 # ---------------------------------------------------------------------------
 
 
-def parse_writer(writer_raw: dict[str, Any]) -> Writer:
-    """Parse the ``writer`` YAML section into a Writer dataclass.
+def parse_writer(writer_raw: Any) -> Writer | list[Writer]:
+    """Parse the ``writer`` YAML section into a Writer or list of Writers.
 
+    Accepts either a single writer mapping or a list of writer mappings.
     For writers that require live connection objects (DuckDB, ClickHouse,
     Iceberg), this function creates them from the YAML connection parameters.
     """
+    if isinstance(writer_raw, list):
+        return [_parse_single_writer(w, f"writer[{i}]") for i, w in enumerate(writer_raw)]
+
     if not isinstance(writer_raw, dict):
         raise YamlConfigError(
-            "'writer' must be a mapping with 'kind' and 'config' keys.",
+            "'writer' must be a mapping with 'kind' and 'config' keys, or a list of such mappings.",
             "writer",
         )
 
+    return _parse_single_writer(writer_raw, "writer")
+
+
+def _parse_single_writer(writer_raw: dict[str, Any], path: str) -> Writer:
+    """Parse a single writer mapping into a Writer dataclass."""
+    if not isinstance(writer_raw, dict):
+        raise YamlConfigError(
+            "Each writer must be a mapping with 'kind' and 'config' keys.",
+            path,
+        )
+
     if "kind" not in writer_raw:
-        raise YamlConfigError("Missing required key 'kind'.", "writer")
+        raise YamlConfigError("Missing required key 'kind'.", path)
 
     kind_str = writer_raw["kind"]
     try:
@@ -1431,17 +1447,14 @@ def parse_writer(writer_raw: dict[str, Any]) -> Writer:
         valid = [k.value for k in WriterKind]
         raise YamlConfigError(
             f"Unknown writer kind '{kind_str}'. Must be one of: {valid}",
-            "writer.kind",
+            f"{path}.kind",
         )
 
     raw_config = writer_raw.get("config", {})
     if not isinstance(raw_config, dict):
-        raise YamlConfigError(
-            "'writer.config' must be a mapping.",
-            "writer.config",
-        )
+        raise YamlConfigError("'config' must be a mapping.", f"{path}.config")
 
-    config_path = "writer.config"
+    config_path = f"{path}.config"
 
     if kind == WriterKind.DUCKDB:
         config = _parse_duckdb_writer(raw_config, config_path)
@@ -1460,7 +1473,7 @@ def parse_writer(writer_raw: dict[str, Any]) -> Writer:
     else:
         raise YamlConfigError(
             f"Writer kind '{kind_str}' is not yet supported in YAML mode.",
-            "writer.kind",
+            f"{path}.kind",
         )
 
     return Writer(kind=kind, config=config)

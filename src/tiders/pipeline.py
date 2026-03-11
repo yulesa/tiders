@@ -220,7 +220,11 @@ async def run_pipeline(pipeline: Pipeline, pipeline_name: Optional[str] = None):
 
     stream = start_stream(pipeline.provider, pipeline.query)
 
-    writer = create_writer(pipeline.writer)
+    writers = (
+        [create_writer(w) for w in pipeline.writer]
+        if isinstance(pipeline.writer, list)
+        else [create_writer(pipeline.writer)]
+    )
 
     while True:
         data = await stream.next()
@@ -244,7 +248,7 @@ async def run_pipeline(pipeline: Pipeline, pipeline_name: Optional[str] = None):
 
         logger.debug("Pushing data to writer")
 
-        await writer.push_data(processed)
+        await asyncio.gather(*[w.push_data(processed) for w in writers])
 
 
 __all__ = ["run_pipeline"]

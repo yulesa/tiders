@@ -629,7 +629,8 @@ class Pipeline:
     Attributes:
         provider: The data provider configuration (RPC endpoint, credentials, …).
         query: The blockchain query specifying which data to ingest.
-        writer: The writer configuration specifying where to store results.
+        writer: The writer configuration, or a list of writers to push data to
+            in parallel on each batch.
         steps: An ordered list of transformation steps applied to each batch of
             ingested data.
         table_aliases: Optional table name overrides applied to raw ingested
@@ -638,7 +639,7 @@ class Pipeline:
 
     provider: ProviderConfig
     query: Query
-    writer: Writer
+    writer: Writer | List[Writer]
     steps: List[Step]
     table_aliases: Optional[EvmTableAliases | SvmTableAliases] = None
 
