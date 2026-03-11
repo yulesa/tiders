@@ -8,6 +8,7 @@ import asyncio
 import logging
 from decimal import Decimal
 from typing import Any, Dict, cast as type_cast
+from  ..config import PostgresqlWriterConfig
 
 import pyarrow as pa
 

@@ -1923,8 +1923,6 @@ def _parse_postgresql_writer(raw: dict[str, Any], path: str) -> PostgresqlWriter
 
     if "host" not in raw:
         raise YamlConfigError("PostgreSQL writer requires 'config.host'.", path)
-    if "dbname" not in raw:
-        raise YamlConfigError("PostgreSQL writer requires 'config.dbname'.", path)
 
     if importlib.util.find_spec("psycopg") is None:
         raise YamlConfigError(
@@ -1937,11 +1935,10 @@ def _parse_postgresql_writer(raw: dict[str, Any], path: str) -> PostgresqlWriter
     conninfo_parts = [
         f"host={raw['host']}",
         f"port={raw.get('port', 5432)}",
-        f"dbname={raw['dbname']}",
-        f"user={raw.get('user', 'postgresql')}",
+        f"dbname={raw.get('dbname', 'postgres')}",
+        f"user={raw.get('user', 'postgres')}",
+        f"password={raw.get('password', 'postgres')}",
     ]
-    if "password" in raw:
-        conninfo_parts.append(f"password={raw['password']}")
     conninfo = " ".join(conninfo_parts)
 
     connection = asyncio.get_event_loop().run_until_complete(
