@@ -31,8 +31,6 @@ __all__ = [
     "svm_decode_instructions",
     "svm_decode_logs",
     "set_chain_id",
-    "polars_step",
-    "datafusion_step",
 ]
 
 

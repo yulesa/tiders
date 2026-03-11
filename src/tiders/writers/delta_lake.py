@@ -44,14 +44,17 @@ class Writer(DataWriter):
         if table_data.num_rows == 0:
             return
 
+        _write = write_deltalake
+        assert _write is not None
         await asyncio.to_thread(
-            write_deltalake,
-            table_or_uri=f"{self.config.data_uri}/{table_name}",
-            data=table_data,
-            partition_by=self.config.partition_by.get(table_name, None),
-            mode="append",
-            schema_mode="merge",
-            storage_options=self.config.storage_options,
+            lambda: _write(
+                table_or_uri=f"{self.config.data_uri}/{table_name}",
+                data=table_data,
+                partition_by=self.config.partition_by.get(table_name, None),
+                mode="append",
+                schema_mode="merge",
+                storage_options=self.config.storage_options,
+            )
         )
 
     async def push_data(self, data: Dict[str, pa.Table]) -> None:
