@@ -96,6 +96,7 @@ from tiders.config import (
     CastByTypeConfig,
     CastConfig,
     ClickHouseWriterConfig,
+    CsvWriterConfig,
     DataFusionStepConfig,
     DeltaLakeWriterConfig,
     DuckdbWriterConfig,
@@ -1454,6 +1455,8 @@ def parse_writer(writer_raw: dict[str, Any]) -> Writer:
         config = _parse_pyarrow_dataset_writer(raw_config, config_path)
     elif kind == WriterKind.POSTGRESQL:
         config = _parse_postgresql_writer(raw_config, config_path)
+    elif kind == WriterKind.CSV:
+        config = _parse_csv_writer(raw_config, config_path)
     else:
         raise YamlConfigError(
             f"Writer kind '{kind_str}' is not yet supported in YAML mode.",
@@ -1774,6 +1777,28 @@ def _parse_postgresql_writer(raw: dict[str, Any], path: str) -> PostgresqlWriter
         config_kwargs["create_tables"] = raw["create_tables"]
 
     return PostgresqlWriterConfig(**config_kwargs)
+
+
+def _parse_csv_writer(raw: dict[str, Any], path: str) -> CsvWriterConfig:
+    """Parse CSV writer config: ``{base_dir, delimiter, ...}``."""
+    valid_keys = {"base_dir", "delimiter", "include_header", "create_dir", "anchor_table"}
+    unknown = set(raw.keys()) - valid_keys
+    if unknown:
+        raise YamlConfigError(
+            f"Unknown CSV writer config keys: {sorted(unknown)}. "
+            f"Valid keys: {sorted(valid_keys)}.",
+            path,
+        )
+
+    if "base_dir" not in raw:
+        raise YamlConfigError("CSV writer requires 'config.base_dir'.", path)
+
+    config_kwargs: dict[str, Any] = {"base_dir": raw["base_dir"]}
+    for key in ("delimiter", "include_header", "create_dir", "anchor_table"):
+        if key in raw:
+            config_kwargs[key] = raw[key]
+
+    return CsvWriterConfig(**config_kwargs)
 
 
 # ---------------------------------------------------------------------------

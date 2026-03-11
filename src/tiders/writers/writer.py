@@ -10,6 +10,7 @@ from ..config import (
     PyArrowDatasetWriterConfig,
     DuckdbWriterConfig,
     PostgresqlWriterConfig,
+    CsvWriterConfig,
 )
 import logging
 
@@ -60,5 +61,10 @@ def create_writer(writer: Writer) -> DataWriter:
 
             assert isinstance(writer.config, PostgresqlWriterConfig)
             return postgresql.Writer(writer.config)
+        case WriterKind.CSV:
+            from . import csv
+
+            assert isinstance(writer.config, CsvWriterConfig)
+            return csv.Writer(writer.config)
         case _:
             raise ValueError(f"Invalid writer kind: {writer.kind}")

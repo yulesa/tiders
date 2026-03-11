@@ -47,6 +47,7 @@ class WriterKind(str, Enum):
     PYARROW_DATASET = "pyarrow_dataset"
     DUCKDB = "duckdb"
     POSTGRESQL = "postgresql"
+    CSV = "csv"
 
 
 class StepKind(str, Enum):
@@ -202,6 +203,29 @@ class PyArrowDatasetWriterConfig:
 
 
 @dataclass
+class CsvWriterConfig:
+    """Configuration for the CSV writer.
+
+    Writes tables as CSV files using ``pyarrow.csv.write_csv``.
+    Each table is stored under ``<base_dir>/<table_name>/``.
+
+    Attributes:
+        base_dir: Root directory for all output CSV files.
+        delimiter: Field delimiter character (default ``,``).
+        include_header: Whether to write a header row (default ``True``).
+        create_dir: Whether to create the output directory if it doesn't exist
+            (default ``True``).
+        anchor_table: If set, this table is written last.
+    """
+
+    base_dir: str
+    delimiter: str = ","
+    include_header: bool = True
+    create_dir: bool = True
+    anchor_table: Optional[str] = None
+
+
+@dataclass
 class DuckdbWriterConfig:
     """Configuration for the DuckDB writer.
 
@@ -258,6 +282,7 @@ class Writer:
         | PyArrowDatasetWriterConfig
         | DuckdbWriterConfig
         | PostgresqlWriterConfig
+        | CsvWriterConfig
     )
 
 
@@ -645,4 +670,5 @@ __all__ = [
     "PyArrowDatasetWriterConfig",
     "DuckdbWriterConfig",
     "PostgresqlWriterConfig",
+    "CsvWriterConfig",
 ]
