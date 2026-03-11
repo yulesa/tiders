@@ -106,6 +106,9 @@ from tiders.config import (
     GlaciersEventsConfig,
     HexEncodeConfig,
     IcebergWriterConfig,
+    JoinBlockDataConfig,
+    JoinEvmTransactionDataConfig,
+    JoinSvmTransactionDataConfig,
     PandasStepConfig,
     PolarsStepConfig,
     PostgresqlWriterConfig,
@@ -251,7 +254,7 @@ def parse_project_info(raw: Any) -> ProjectInfo:
             "project",
         )
 
-    valid_keys = {"name", "description", "repository"}
+    valid_keys = {f.name for f in dataclasses.fields(ProjectInfo)}
     unknown = set(raw.keys()) - valid_keys
     if unknown:
         raise YamlConfigError(
@@ -893,6 +896,14 @@ def _parse_step_config(kind: StepKind, raw: dict[str, Any], path: str) -> Any:
     cfg_path = f"{path}.config"
 
     if kind == StepKind.EVM_DECODE_EVENTS:
+        valid_keys = {f.name for f in dataclasses.fields(EvmDecodeEventsConfig)}
+        unknown = set(raw.keys()) - valid_keys
+        if unknown:
+            raise YamlConfigError(
+                f"Unknown evm_decode_events config keys: {sorted(unknown)}. "
+                f"Valid keys: {sorted(valid_keys)}.",
+                cfg_path,
+            )
         if "event_signature" not in raw:
             raise YamlConfigError(
                 "evm_decode_events requires 'config.event_signature'.",
@@ -908,6 +919,14 @@ def _parse_step_config(kind: StepKind, raw: dict[str, Any], path: str) -> Any:
         )
 
     if kind == StepKind.CAST_BY_TYPE:
+        valid_keys = {f.name for f in dataclasses.fields(CastByTypeConfig)}
+        unknown = set(raw.keys()) - valid_keys
+        if unknown:
+            raise YamlConfigError(
+                f"Unknown cast_by_type config keys: {sorted(unknown)}. "
+                f"Valid keys: {sorted(valid_keys)}.",
+                cfg_path,
+            )
         if "from_type" not in raw:
             raise YamlConfigError(
                 "cast_by_type requires 'config.from_type' (e.g. 'decimal256(76,0)').",
@@ -925,6 +944,14 @@ def _parse_step_config(kind: StepKind, raw: dict[str, Any], path: str) -> Any:
         )
 
     if kind == StepKind.CAST:
+        valid_keys = {f.name for f in dataclasses.fields(CastConfig)}
+        unknown = set(raw.keys()) - valid_keys
+        if unknown:
+            raise YamlConfigError(
+                f"Unknown cast config keys: {sorted(unknown)}. "
+                f"Valid keys: {sorted(valid_keys)}.",
+                cfg_path,
+            )
         if "table_name" not in raw:
             raise YamlConfigError("cast requires 'config.table_name'.", cfg_path)
         if "mappings" not in raw:
@@ -943,18 +970,50 @@ def _parse_step_config(kind: StepKind, raw: dict[str, Any], path: str) -> Any:
         )
 
     if kind == StepKind.HEX_ENCODE:
+        valid_keys = {f.name for f in dataclasses.fields(HexEncodeConfig)}
+        unknown = set(raw.keys()) - valid_keys
+        if unknown:
+            raise YamlConfigError(
+                f"Unknown hex_encode config keys: {sorted(unknown)}. "
+                f"Valid keys: {sorted(valid_keys)}.",
+                cfg_path,
+            )
         return HexEncodeConfig(
             tables=raw.get("tables"),
             prefixed=raw.get("prefixed", True),
         )
 
     if kind == StepKind.BASE58_ENCODE:
+        valid_keys = {f.name for f in dataclasses.fields(Base58EncodeConfig)}
+        unknown = set(raw.keys()) - valid_keys
+        if unknown:
+            raise YamlConfigError(
+                f"Unknown base58_encode config keys: {sorted(unknown)}. "
+                f"Valid keys: {sorted(valid_keys)}.",
+                cfg_path,
+            )
         return Base58EncodeConfig(tables=raw.get("tables"))
 
     if kind == StepKind.U256_TO_BINARY:
+        valid_keys = {f.name for f in dataclasses.fields(U256ToBinaryConfig)}
+        unknown = set(raw.keys()) - valid_keys
+        if unknown:
+            raise YamlConfigError(
+                f"Unknown u256_to_binary config keys: {sorted(unknown)}. "
+                f"Valid keys: {sorted(valid_keys)}.",
+                cfg_path,
+            )
         return U256ToBinaryConfig(tables=raw.get("tables"))
 
     if kind == StepKind.SET_CHAIN_ID:
+        valid_keys = {f.name for f in dataclasses.fields(SetChainIdConfig)}
+        unknown = set(raw.keys()) - valid_keys
+        if unknown:
+            raise YamlConfigError(
+                f"Unknown set_chain_id config keys: {sorted(unknown)}. "
+                f"Valid keys: {sorted(valid_keys)}.",
+                cfg_path,
+            )
         if "chain_id" not in raw:
             raise YamlConfigError(
                 "set_chain_id requires 'config.chain_id' (integer).",
@@ -969,6 +1028,14 @@ def _parse_step_config(kind: StepKind, raw: dict[str, Any], path: str) -> Any:
         return _parse_svm_decode_logs_config(raw, cfg_path)
 
     if kind == StepKind.GLACIERS_EVENTS:
+        valid_keys = {f.name for f in dataclasses.fields(GlaciersEventsConfig)}
+        unknown = set(raw.keys()) - valid_keys
+        if unknown:
+            raise YamlConfigError(
+                f"Unknown glaciers_events config keys: {sorted(unknown)}. "
+                f"Valid keys: {sorted(valid_keys)}.",
+                cfg_path,
+            )
         if "abi_db_path" not in raw:
             raise YamlConfigError(
                 "glaciers_events requires 'config.abi_db_path'.", cfg_path
@@ -979,6 +1046,39 @@ def _parse_step_config(kind: StepKind, raw: dict[str, Any], path: str) -> Any:
             input_table=raw.get("input_table", "logs"),
             output_table=raw.get("output_table", "decoded_logs"),
         )
+
+    if kind == StepKind.JOIN_BLOCK_DATA:
+        valid_keys = {f.name for f in dataclasses.fields(JoinBlockDataConfig)}
+        unknown = set(raw.keys()) - valid_keys
+        if unknown:
+            raise YamlConfigError(
+                f"Unknown join_block_data config keys: {sorted(unknown)}. "
+                f"Valid keys: {sorted(valid_keys)}.",
+                cfg_path,
+            )
+        return JoinBlockDataConfig(**{k: raw[k] for k in valid_keys if k in raw})
+
+    if kind == StepKind.JOIN_EVM_TRANSACTION_DATA:
+        valid_keys = {f.name for f in dataclasses.fields(JoinEvmTransactionDataConfig)}
+        unknown = set(raw.keys()) - valid_keys
+        if unknown:
+            raise YamlConfigError(
+                f"Unknown join_evm_transaction_data config keys: {sorted(unknown)}. "
+                f"Valid keys: {sorted(valid_keys)}.",
+                cfg_path,
+            )
+        return JoinEvmTransactionDataConfig(**{k: raw[k] for k in valid_keys if k in raw})
+
+    if kind == StepKind.JOIN_SVM_TRANSACTION_DATA:
+        valid_keys = {f.name for f in dataclasses.fields(JoinSvmTransactionDataConfig)}
+        unknown = set(raw.keys()) - valid_keys
+        if unknown:
+            raise YamlConfigError(
+                f"Unknown join_svm_transaction_data config keys: {sorted(unknown)}. "
+                f"Valid keys: {sorted(valid_keys)}.",
+                cfg_path,
+            )
+        return JoinSvmTransactionDataConfig(**{k: raw[k] for k in valid_keys if k in raw})
 
     # Fallback for step kinds that don't need config parsing
     raise YamlConfigError(
@@ -991,6 +1091,14 @@ def _parse_svm_decode_instructions_config(
     raw: dict[str, Any], path: str
 ) -> SvmDecodeInstructionsConfig:
     """Parse svm_decode_instructions config including the instruction signature."""
+    valid_keys = {f.name for f in dataclasses.fields(SvmDecodeInstructionsConfig)}
+    unknown = set(raw.keys()) - valid_keys
+    if unknown:
+        raise YamlConfigError(
+            f"Unknown svm_decode_instructions config keys: {sorted(unknown)}. "
+            f"Valid keys: {sorted(valid_keys)}.",
+            path,
+        )
     if "instruction_signature" not in raw:
         raise YamlConfigError(
             "svm_decode_instructions requires 'config.instruction_signature' "
@@ -1037,6 +1145,14 @@ def _parse_svm_decode_logs_config(
     raw: dict[str, Any], path: str
 ) -> SvmDecodeLogsConfig:
     """Parse svm_decode_logs config including the log signature."""
+    valid_keys = {f.name for f in dataclasses.fields(SvmDecodeLogsConfig)}
+    unknown = set(raw.keys()) - valid_keys
+    if unknown:
+        raise YamlConfigError(
+            f"Unknown svm_decode_logs config keys: {sorted(unknown)}. "
+            f"Valid keys: {sorted(valid_keys)}.",
+            path,
+        )
     if "log_signature" not in raw:
         raise YamlConfigError(
             "svm_decode_logs requires 'config.log_signature' with 'params'.",
@@ -1110,6 +1226,14 @@ def _extract_table_name_from_sql(sql: str) -> Optional[str]:
 
 def _load_python_file_step(raw: dict[str, Any], path: str, yaml_dir: Path) -> Step:
     """Load a step from a Python file, importing the function by name."""
+    valid_keys = {"file", "function", "step_type", "context", "name"}
+    unknown = set(raw.keys()) - valid_keys
+    if unknown:
+        raise YamlConfigError(
+            f"Unknown python_file step keys: {sorted(unknown)}. "
+            f"Valid keys: {sorted(valid_keys)}.",
+            path,
+        )
     if "file" not in raw:
         raise YamlConfigError(
             "python_file step requires a 'file' key pointing to a .py file.",
@@ -1331,11 +1455,27 @@ def _parse_dyntype(raw: Any, path: str) -> Any:
     type_name = raw["type"]
 
     if type_name == "array":
+        valid_keys = {"type", "element"}
+        unknown = set(raw.keys()) - valid_keys
+        if unknown:
+            raise YamlConfigError(
+                f"Unknown array type keys: {sorted(unknown)}. "
+                f"Valid keys: {sorted(valid_keys)}.",
+                path,
+            )
         if "element" not in raw:
             raise YamlConfigError("Array type requires an 'element' key.", path)
         return Array(element_type=_parse_dyntype(raw["element"], f"{path}.element"))
 
     if type_name == "fixed_array":
+        valid_keys = {"type", "element", "size"}
+        unknown = set(raw.keys()) - valid_keys
+        if unknown:
+            raise YamlConfigError(
+                f"Unknown fixed_array type keys: {sorted(unknown)}. "
+                f"Valid keys: {sorted(valid_keys)}.",
+                path,
+            )
         if "element" not in raw:
             raise YamlConfigError("FixedArray type requires an 'element' key.", path)
         if "size" not in raw:
@@ -1346,16 +1486,40 @@ def _parse_dyntype(raw: Any, path: str) -> Any:
         )
 
     if type_name == "option":
+        valid_keys = {"type", "element"}
+        unknown = set(raw.keys()) - valid_keys
+        if unknown:
+            raise YamlConfigError(
+                f"Unknown option type keys: {sorted(unknown)}. "
+                f"Valid keys: {sorted(valid_keys)}.",
+                path,
+            )
         if "element" not in raw:
             raise YamlConfigError("Option type requires an 'element' key.", path)
         return Option(element_type=_parse_dyntype(raw["element"], f"{path}.element"))
 
     if type_name == "struct":
+        valid_keys = {"type", "fields"}
+        unknown = set(raw.keys()) - valid_keys
+        if unknown:
+            raise YamlConfigError(
+                f"Unknown struct type keys: {sorted(unknown)}. "
+                f"Valid keys: {sorted(valid_keys)}.",
+                path,
+            )
         if "fields" not in raw:
             raise YamlConfigError("Struct type requires a 'fields' list.", path)
+        valid_field_keys = {"name", "type"}
         fields = []
         for j, f in enumerate(raw["fields"]):
             fp = f"{path}.fields[{j}]"
+            unknown_field = set(f.keys()) - valid_field_keys
+            if unknown_field:
+                raise YamlConfigError(
+                    f"Unknown struct field keys: {sorted(unknown_field)}. "
+                    f"Valid keys: {sorted(valid_field_keys)}.",
+                    fp,
+                )
             if "name" not in f:
                 raise YamlConfigError("Struct field must have a 'name'.", fp)
             if "type" not in f:
@@ -1368,11 +1532,27 @@ def _parse_dyntype(raw: Any, path: str) -> Any:
         return Struct(fields=fields)
 
     if type_name == "enum":
+        valid_keys = {"type", "variants"}
+        unknown = set(raw.keys()) - valid_keys
+        if unknown:
+            raise YamlConfigError(
+                f"Unknown enum type keys: {sorted(unknown)}. "
+                f"Valid keys: {sorted(valid_keys)}.",
+                path,
+            )
         if "variants" not in raw:
             raise YamlConfigError("Enum type requires a 'variants' list.", path)
+        valid_variant_keys = {"name", "type"}
         variants = []
         for j, v in enumerate(raw["variants"]):
             vp = f"{path}.variants[{j}]"
+            unknown_variant = set(v.keys()) - valid_variant_keys
+            if unknown_variant:
+                raise YamlConfigError(
+                    f"Unknown enum variant keys: {sorted(unknown_variant)}. "
+                    f"Valid keys: {sorted(valid_variant_keys)}.",
+                    vp,
+                )
             if "name" not in v:
                 raise YamlConfigError("Enum variant must have a 'name'.", vp)
             elem = None
@@ -1392,9 +1572,17 @@ def _parse_param_inputs(
     params_raw: list[dict[str, Any]], path: str
 ) -> list[ParamInput]:
     """Parse a list of parameter definitions into ParamInput objects."""
+    valid_param_keys = {"name", "type"}
     result = []
     for i, p in enumerate(params_raw):
         pp = f"{path}[{i}]"
+        unknown = set(p.keys()) - valid_param_keys
+        if unknown:
+            raise YamlConfigError(
+                f"Unknown parameter keys: {sorted(unknown)}. "
+                f"Valid keys: {sorted(valid_param_keys)}.",
+                pp,
+            )
         if "name" not in p:
             raise YamlConfigError("Parameter must have a 'name'.", pp)
         if "type" not in p:
@@ -1794,7 +1982,7 @@ def _parse_postgresql_writer(raw: dict[str, Any], path: str) -> PostgresqlWriter
 
 def _parse_csv_writer(raw: dict[str, Any], path: str) -> CsvWriterConfig:
     """Parse CSV writer config: ``{base_dir, delimiter, ...}``."""
-    valid_keys = {"base_dir", "delimiter", "include_header", "create_dir", "anchor_table"}
+    valid_keys = {f.name for f in dataclasses.fields(CsvWriterConfig)}
     unknown = set(raw.keys()) - valid_keys
     if unknown:
         raise YamlConfigError(
@@ -1806,12 +1994,7 @@ def _parse_csv_writer(raw: dict[str, Any], path: str) -> CsvWriterConfig:
     if "base_dir" not in raw:
         raise YamlConfigError("CSV writer requires 'config.base_dir'.", path)
 
-    config_kwargs: dict[str, Any] = {"base_dir": raw["base_dir"]}
-    for key in ("delimiter", "include_header", "create_dir", "anchor_table"):
-        if key in raw:
-            config_kwargs[key] = raw[key]
-
-    return CsvWriterConfig(**config_kwargs)
+    return CsvWriterConfig(**{k: raw[k] for k in valid_keys if k in raw})
 
 
 # ---------------------------------------------------------------------------

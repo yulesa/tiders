@@ -534,6 +534,88 @@ class DataFusionStepConfig:
 
 
 @dataclass
+class JoinBlockDataConfig:
+    """Configuration for the join-block-data step.
+
+    Joins block fields into other tables using a left outer join. Column 
+    collisions are prefixed with `<block_table_name>_`.
+
+    Attributes:
+        tables: List of table names to join block data into. When ``None``,
+            all tables except the block table itself are joined.
+        block_table_name: Name of the blocks table in the data dictionary
+            (default ``"blocks"``).
+        join_left_on: Column(s) in the left (child) table used as the join key
+            (default ``["block_number"]``).
+        join_blocks_on: Column(s) in the blocks table used as the join key
+            (default ``["number"]``).
+    """
+
+    tables: Optional[list[str]] = None
+    block_table_name: str = "blocks"
+    join_left_on: list[str] = field(default_factory=lambda: ["block_number"])
+    join_blocks_on: list[str] = field(default_factory=lambda: ["number"])
+
+
+@dataclass
+class JoinSvmTransactionDataConfig:
+    """Configuration for the join-svm-transaction-data step.
+
+    Joins SVM transaction fields into other tables using a left outer join.
+    Column collisions are prefixed with `<tx_table_name>_`.
+
+    Attributes:
+        tables: List of table names to join transaction data into. When
+            ``None``, all tables except the transactions table itself are
+            joined.
+        tx_table_name: Name of the transactions table in the data dictionary
+            (default ``"transactions"``).
+        join_left_on: Column(s) in the left (child) table used as the join key
+            (default ``["block_slot", "transaction_index"]``).
+        join_transactions_on: Column(s) in the transactions table used as the
+            join key (default ``["block_slot", "transaction_index"]``).
+    """
+
+    tables: Optional[list[str]] = None
+    tx_table_name: str = "transactions"
+    join_left_on: list[str] = field(
+        default_factory=lambda: ["block_slot", "transaction_index"]
+    )
+    join_transactions_on: list[str] = field(
+        default_factory=lambda: ["block_slot", "transaction_index"]
+    )
+
+
+@dataclass
+class JoinEvmTransactionDataConfig:
+    """Configuration for the join-evm-transaction-data step.
+
+    Joins EVM transaction fields into other tables using a left outer join.
+    Column collisions are prefixed with `<tx_table_name>_`.
+
+    Attributes:
+        tables: List of table names to join transaction data into. When
+            ``None``, all tables except the transactions table itself are
+            joined.
+        tx_table_name: Name of the transactions table in the data dictionary
+            (default ``"transactions"``).
+        join_left_on: Column(s) in the left (child) table used as the join key
+            (default ``["block_number", "transaction_index"]``).
+        join_transactions_on: Column(s) in the transactions table used as the
+            join key (default ``["block_number", "transaction_index"]``).
+    """
+
+    tables: Optional[list[str]] = None
+    tx_table_name: str = "transactions"
+    join_left_on: list[str] = field(
+        default_factory=lambda: ["block_number", "transaction_index"]
+    )
+    join_transactions_on: list[str] = field(
+        default_factory=lambda: ["block_number", "transaction_index"]
+    )
+
+
+@dataclass
 class SetChainIdConfig:
     """Configuration for the set-chain-id step.
 
@@ -618,6 +700,9 @@ class Step:
         | DataFusionStepConfig
         | GlaciersEventsConfig
         | SetChainIdConfig
+        | JoinBlockDataConfig
+        | JoinSvmTransactionDataConfig
+        | JoinEvmTransactionDataConfig
     )
     name: Optional[str] = None
 
@@ -662,6 +747,9 @@ __all__ = [
     "DataFusionStepConfig",
     "GlaciersEventsConfig",
     "SetChainIdConfig",
+    "JoinBlockDataConfig",
+    "JoinSvmTransactionDataConfig",
+    "JoinEvmTransactionDataConfig",
     "Writer",
     "StepKind",
     "WriterKind",

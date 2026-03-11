@@ -16,6 +16,9 @@ from . import (
     svm_decode_instructions,
     svm_decode_logs,
     set_chain_id,
+    join_block_data,
+    join_svm_transaction_data,
+    join_evm_transaction_data,
 )
 
 _LAZY_MODULES = {"polars_step", "pandas_step", "datafusion_step"}
@@ -31,6 +34,9 @@ __all__ = [
     "svm_decode_instructions",
     "svm_decode_logs",
     "set_chain_id",
+    "join_block_data",
+    "join_svm_transaction_data",
+    "join_evm_transaction_data",
 ]
 
 
