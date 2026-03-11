@@ -68,7 +68,6 @@ class StepKind(str, Enum):
     JOIN_BLOCK_DATA = "join_block_data"
     JOIN_SVM_TRANSACTION_DATA = "join_svm_transaction_data"
     JOIN_EVM_TRANSACTION_DATA = "join_evm_transaction_data"
-    GLACIERS_EVENTS = "glaciers_events"
     SET_CHAIN_ID = "set_chain_id"
     DATAFUSION = "datafusion"
     POLARS = "polars"
@@ -314,24 +313,6 @@ class EvmDecodeEventsConfig:
     input_table: str = "logs"
     output_table: str = "decoded_logs"
     hstack: bool = True
-
-
-@dataclass
-class GlaciersEventsConfig:
-    """Configuration for the Glaciers ABI-database event decoding step.
-
-    Attributes:
-        abi_db_path: Path to the local ABI database used for signature lookup.
-        decoder_type: The type of data to decode (``"log"`` or other supported
-            types).
-        input_table: Name of the source table (default ``"logs"``).
-        output_table: Name of the output table (default ``"decoded_logs"``).
-    """
-
-    abi_db_path: str
-    decoder_type: str = "log"
-    input_table: str = "logs"
-    output_table: str = "decoded_logs"
 
 
 @dataclass
@@ -698,7 +679,6 @@ class Step:
         | PolarsStepConfig
         | PandasStepConfig
         | DataFusionStepConfig
-        | GlaciersEventsConfig
         | SetChainIdConfig
         | JoinBlockDataConfig
         | JoinSvmTransactionDataConfig
@@ -745,7 +725,6 @@ __all__ = [
     "PolarsStepConfig",
     "PandasStepConfig",
     "DataFusionStepConfig",
-    "GlaciersEventsConfig",
     "SetChainIdConfig",
     "JoinBlockDataConfig",
     "JoinSvmTransactionDataConfig",

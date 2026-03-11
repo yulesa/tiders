@@ -103,7 +103,6 @@ from tiders.config import (
     DuckdbWriterConfig,
     EvmDecodeEventsConfig,
     EvmTableAliases,
-    GlaciersEventsConfig,
     HexEncodeConfig,
     IcebergWriterConfig,
     JoinBlockDataConfig,
@@ -1026,26 +1025,6 @@ def _parse_step_config(kind: StepKind, raw: dict[str, Any], path: str) -> Any:
 
     if kind == StepKind.SVM_DECODE_LOGS:
         return _parse_svm_decode_logs_config(raw, cfg_path)
-
-    if kind == StepKind.GLACIERS_EVENTS:
-        valid_keys = {f.name for f in dataclasses.fields(GlaciersEventsConfig)}
-        unknown = set(raw.keys()) - valid_keys
-        if unknown:
-            raise YamlConfigError(
-                f"Unknown glaciers_events config keys: {sorted(unknown)}. "
-                f"Valid keys: {sorted(valid_keys)}.",
-                cfg_path,
-            )
-        if "abi_db_path" not in raw:
-            raise YamlConfigError(
-                "glaciers_events requires 'config.abi_db_path'.", cfg_path
-            )
-        return GlaciersEventsConfig(
-            abi_db_path=raw["abi_db_path"],
-            decoder_type=raw.get("decoder_type", "log"),
-            input_table=raw.get("input_table", "logs"),
-            output_table=raw.get("output_table", "decoded_logs"),
-        )
 
     if kind == StepKind.JOIN_BLOCK_DATA:
         valid_keys = {f.name for f in dataclasses.fields(JoinBlockDataConfig)}
