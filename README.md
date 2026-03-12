@@ -1,4 +1,4 @@
-<img src="./resources/tiders_logo2.png" alt="Tiders" width="1000">
+<img src="/resources/tiders_logo2.png" alt="Tiders" width="1000">
 
 [![PyPI](https://img.shields.io/badge/PyPI-lightgreen?style=for-the-badge&logo=pypi&labelColor=white)](https://pypi.org/project/tiders/)
 [![tiders-core](https://img.shields.io/badge/github-black?style=for-the-badge&logo=github)](https://github.com/yulesa/tiders-core)
@@ -16,7 +16,7 @@ Tiders is modular. A Tiders pipeline is built from four components:
 | `Steps` | Transformations to apply (decode, cast, encode, custom) |
 | `Writer` | Output destination |
 
-<img src="./resources/four_pipeline_components.png" alt="four_pipeline_components" width="1000">
+<img src="/resources/four_pipeline_components.png" alt="four_pipeline_components" width="1000">
 
 **Why Tiders?**
 
@@ -101,7 +101,7 @@ RUST_LOG=trace uv run examples/path/to/my/example
 
 Tiders is composed of some repositories. 3 owned ones.
 
-<img src="./resources/tiders_architecture.png" alt="Tiders-architecture" width="1000">
+<img src="/resources/tiders_architecture.png" alt="Tiders-architecture" width="1000">
 
 This repo uses `uv` for development. Clone all three projects side by side:
 
