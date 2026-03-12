@@ -28,6 +28,8 @@ if TYPE_CHECKING:
     import duckdb
     import polars as pl
     import datafusion
+    import pandas as pd
+    import psycopg
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +46,8 @@ class WriterKind(str, Enum):
     DELTA_LAKE = "delta_lake"
     PYARROW_DATASET = "pyarrow_dataset"
     DUCKDB = "duckdb"
+    POSTGRESQL = "postgresql"
+    CSV = "csv"
 
 
 class StepKind(str, Enum):
@@ -64,10 +68,10 @@ class StepKind(str, Enum):
     JOIN_BLOCK_DATA = "join_block_data"
     JOIN_SVM_TRANSACTION_DATA = "join_svm_transaction_data"
     JOIN_EVM_TRANSACTION_DATA = "join_evm_transaction_data"
-    GLACIERS_EVENTS = "glaciers_events"
     SET_CHAIN_ID = "set_chain_id"
     DATAFUSION = "datafusion"
     POLARS = "polars"
+    PANDAS = "pandas"
 
 
 @dataclass
@@ -198,6 +202,29 @@ class PyArrowDatasetWriterConfig:
 
 
 @dataclass
+class CsvWriterConfig:
+    """Configuration for the CSV writer.
+
+    Writes tables as CSV files using ``pyarrow.csv.write_csv``.
+    Each table is stored under ``<base_dir>/<table_name>/``.
+
+    Attributes:
+        base_dir: Root directory for all output CSV files.
+        delimiter: Field delimiter character (default ``,``).
+        include_header: Whether to write a header row (default ``True``).
+        create_dir: Whether to create the output directory if it doesn't exist
+            (default ``True``).
+        anchor_table: If set, this table is written last.
+    """
+
+    base_dir: str
+    delimiter: str = ","
+    include_header: bool = True
+    create_dir: bool = True
+    anchor_table: Optional[str] = None
+
+
+@dataclass
 class DuckdbWriterConfig:
     """Configuration for the DuckDB writer.
 
@@ -207,6 +234,34 @@ class DuckdbWriterConfig:
     """
 
     connection: "duckdb.DuckDBPyConnection"
+
+
+@dataclass
+class PostgresqlWriterConfig:
+    """Configuration for the PostgreSQL writer.
+
+    Inserts Arrow data into PostgreSQL using the COPY protocol via ``psycopg`` v3.
+    Tables are created automatically on the first push using the Arrow schema.
+    All tables except the ``anchor_table`` are inserted in parallel.
+
+    List, Struct, and Map columns are not supported — use a step to flatten or
+    drop those columns before writing. See the PostgreSQL writer docs for the
+    full list of raw blockchain fields that require preprocessing.
+
+    Attributes:
+        connection: An open ``psycopg.AsyncConnection`` instance.
+        schema: The PostgreSQL schema (namespace) to write tables into.
+            Defaults to ``"public"``.
+        anchor_table: If set, this table is written last (after all others) to
+            provide ordering guarantees for downstream consumers.
+        create_tables: When ``True`` (the default), tables are created via
+            ``CREATE TABLE IF NOT EXISTS`` on the first push using the Arrow schema.
+    """
+
+    connection: "psycopg.AsyncConnection[Any]"
+    schema: str = "public"
+    anchor_table: Optional[str] = None
+    create_tables: bool = True
 
 
 @dataclass
@@ -225,6 +280,8 @@ class Writer:
         | DeltaLakeWriterConfig
         | PyArrowDatasetWriterConfig
         | DuckdbWriterConfig
+        | PostgresqlWriterConfig
+        | CsvWriterConfig
     )
 
 
@@ -256,24 +313,6 @@ class EvmDecodeEventsConfig:
     input_table: str = "logs"
     output_table: str = "decoded_logs"
     hstack: bool = True
-
-
-@dataclass
-class GlaciersEventsConfig:
-    """Configuration for the Glaciers ABI-database event decoding step.
-
-    Attributes:
-        abi_db_path: Path to the local ABI database used for signature lookup.
-        decoder_type: The type of data to decode (``"log"`` or other supported
-            types).
-        input_table: Name of the source table (default ``"logs"``).
-        output_table: Name of the output table (default ``"decoded_logs"``).
-    """
-
-    abi_db_path: str
-    decoder_type: str = "log"
-    input_table: str = "logs"
-    output_table: str = "decoded_logs"
 
 
 @dataclass
@@ -433,6 +472,26 @@ class PolarsStepConfig:
 
 
 @dataclass
+class PandasStepConfig:
+    """Configuration for a custom Pandas transformation step.
+
+    Allows users to supply an arbitrary function that receives all tables as
+    Pandas DataFrames and returns transformed DataFrames.
+
+    Attributes:
+        runner: A callable ``(tables, context) -> tables`` where ``tables`` is a
+            dict mapping table names to ``pandas.DataFrame`` objects.
+        context: An optional user-defined value passed as the second argument to
+            ``runner``.
+    """
+
+    runner: Callable[
+        [Dict[str, "pd.DataFrame"], Optional[Any]], Dict[str, "pd.DataFrame"]
+    ]
+    context: Optional[Any] = None
+
+
+@dataclass
 class DataFusionStepConfig:
     """Configuration for a custom DataFusion transformation step.
 
@@ -453,6 +512,88 @@ class DataFusionStepConfig:
         Dict[str, "datafusion.DataFrame"],
     ]
     context: Optional[Any] = None
+
+
+@dataclass
+class JoinBlockDataConfig:
+    """Configuration for the join-block-data step.
+
+    Joins block fields into other tables using a left outer join. Column
+    collisions are prefixed with `<block_table_name>_`.
+
+    Attributes:
+        tables: List of table names to join block data into. When ``None``,
+            all tables except the block table itself are joined.
+        block_table_name: Name of the blocks table in the data dictionary
+            (default ``"blocks"``).
+        join_left_on: Column(s) in the left (child) table used as the join key
+            (default ``["block_number"]``).
+        join_blocks_on: Column(s) in the blocks table used as the join key
+            (default ``["number"]``).
+    """
+
+    tables: Optional[list[str]] = None
+    block_table_name: str = "blocks"
+    join_left_on: list[str] = field(default_factory=lambda: ["block_number"])
+    join_blocks_on: list[str] = field(default_factory=lambda: ["number"])
+
+
+@dataclass
+class JoinSvmTransactionDataConfig:
+    """Configuration for the join-svm-transaction-data step.
+
+    Joins SVM transaction fields into other tables using a left outer join.
+    Column collisions are prefixed with `<tx_table_name>_`.
+
+    Attributes:
+        tables: List of table names to join transaction data into. When
+            ``None``, all tables except the transactions table itself are
+            joined.
+        tx_table_name: Name of the transactions table in the data dictionary
+            (default ``"transactions"``).
+        join_left_on: Column(s) in the left (child) table used as the join key
+            (default ``["block_slot", "transaction_index"]``).
+        join_transactions_on: Column(s) in the transactions table used as the
+            join key (default ``["block_slot", "transaction_index"]``).
+    """
+
+    tables: Optional[list[str]] = None
+    tx_table_name: str = "transactions"
+    join_left_on: list[str] = field(
+        default_factory=lambda: ["block_slot", "transaction_index"]
+    )
+    join_transactions_on: list[str] = field(
+        default_factory=lambda: ["block_slot", "transaction_index"]
+    )
+
+
+@dataclass
+class JoinEvmTransactionDataConfig:
+    """Configuration for the join-evm-transaction-data step.
+
+    Joins EVM transaction fields into other tables using a left outer join.
+    Column collisions are prefixed with `<tx_table_name>_`.
+
+    Attributes:
+        tables: List of table names to join transaction data into. When
+            ``None``, all tables except the transactions table itself are
+            joined.
+        tx_table_name: Name of the transactions table in the data dictionary
+            (default ``"transactions"``).
+        join_left_on: Column(s) in the left (child) table used as the join key
+            (default ``["block_number", "transaction_index"]``).
+        join_transactions_on: Column(s) in the transactions table used as the
+            join key (default ``["block_number", "transaction_index"]``).
+    """
+
+    tables: Optional[list[str]] = None
+    tx_table_name: str = "transactions"
+    join_left_on: list[str] = field(
+        default_factory=lambda: ["block_number", "transaction_index"]
+    )
+    join_transactions_on: list[str] = field(
+        default_factory=lambda: ["block_number", "transaction_index"]
+    )
 
 
 @dataclass
@@ -536,9 +677,12 @@ class Step:
         | SvmDecodeInstructionsConfig
         | SvmDecodeLogsConfig
         | PolarsStepConfig
+        | PandasStepConfig
         | DataFusionStepConfig
-        | GlaciersEventsConfig
         | SetChainIdConfig
+        | JoinBlockDataConfig
+        | JoinSvmTransactionDataConfig
+        | JoinEvmTransactionDataConfig
     )
     name: Optional[str] = None
 
@@ -550,7 +694,8 @@ class Pipeline:
     Attributes:
         provider: The data provider configuration (RPC endpoint, credentials, …).
         query: The blockchain query specifying which data to ingest.
-        writer: The writer configuration specifying where to store results.
+        writer: The writer configuration, or a list of writers to push data to
+            in parallel on each batch.
         steps: An ordered list of transformation steps applied to each batch of
             ingested data.
         table_aliases: Optional table name overrides applied to raw ingested
@@ -559,7 +704,7 @@ class Pipeline:
 
     provider: ProviderConfig
     query: Query
-    writer: Writer
+    writer: Writer | List[Writer]
     steps: List[Step]
     table_aliases: Optional[EvmTableAliases | SvmTableAliases] = None
 
@@ -578,9 +723,12 @@ __all__ = [
     "SvmDecodeInstructionsConfig",
     "SvmDecodeLogsConfig",
     "PolarsStepConfig",
+    "PandasStepConfig",
     "DataFusionStepConfig",
-    "GlaciersEventsConfig",
     "SetChainIdConfig",
+    "JoinBlockDataConfig",
+    "JoinSvmTransactionDataConfig",
+    "JoinEvmTransactionDataConfig",
     "Writer",
     "StepKind",
     "WriterKind",
@@ -589,4 +737,6 @@ __all__ = [
     "DeltaLakeWriterConfig",
     "PyArrowDatasetWriterConfig",
     "DuckdbWriterConfig",
+    "PostgresqlWriterConfig",
+    "CsvWriterConfig",
 ]

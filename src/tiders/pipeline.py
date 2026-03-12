@@ -15,6 +15,7 @@ from .config import (
     CastByTypeConfig,
     CastConfig,
     PolarsStepConfig,
+    PandasStepConfig,
     DataFusionStepConfig,
     EvmDecodeEventsConfig,
     HexEncodeConfig,
@@ -22,6 +23,9 @@ from .config import (
     EvmTableAliases,
     SvmTableAliases,
     SetChainIdConfig,
+    JoinBlockDataConfig,
+    JoinSvmTransactionDataConfig,
+    JoinEvmTransactionDataConfig,
     Step,
     StepKind,
     U256ToBinaryConfig,
@@ -144,9 +148,23 @@ def process_steps(
 
             assert isinstance(step.config, PolarsStepConfig)
             data = polars_step.execute(data, step.config)
+        elif step.kind == StepKind.PANDAS:
+            from .steps import pandas_step
+
+            assert isinstance(step.config, PandasStepConfig)
+            data = pandas_step.execute(data, step.config)
         elif step.kind == StepKind.SET_CHAIN_ID:
             assert isinstance(step.config, SetChainIdConfig)
             data = step_def.set_chain_id.execute(data, step.config)
+        elif step.kind == StepKind.JOIN_BLOCK_DATA:
+            assert isinstance(step.config, JoinBlockDataConfig)
+            data = step_def.join_block_data.execute(data, step.config)
+        elif step.kind == StepKind.JOIN_SVM_TRANSACTION_DATA:
+            assert isinstance(step.config, JoinSvmTransactionDataConfig)
+            data = step_def.join_svm_transaction_data.execute(data, step.config)
+        elif step.kind == StepKind.JOIN_EVM_TRANSACTION_DATA:
+            assert isinstance(step.config, JoinEvmTransactionDataConfig)
+            data = step_def.join_evm_transaction_data.execute(data, step.config)
         else:
             raise Exception(f"Unknown step kind: {step.kind}")
 
@@ -214,7 +232,11 @@ async def run_pipeline(pipeline: Pipeline, pipeline_name: Optional[str] = None):
 
     stream = start_stream(pipeline.provider, pipeline.query)
 
-    writer = create_writer(pipeline.writer)
+    writers = (
+        [create_writer(w) for w in pipeline.writer]
+        if isinstance(pipeline.writer, list)
+        else [create_writer(pipeline.writer)]
+    )
 
     while True:
         data = await stream.next()
@@ -238,7 +260,7 @@ async def run_pipeline(pipeline: Pipeline, pipeline_name: Optional[str] = None):
 
         logger.debug("Pushing data to writer")
 
-        await writer.push_data(processed)
+        await asyncio.gather(*[w.push_data(processed) for w in writers])
 
 
 __all__ = ["run_pipeline"]
