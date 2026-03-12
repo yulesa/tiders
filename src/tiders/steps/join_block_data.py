@@ -7,7 +7,9 @@ import pyarrow as pa
 from ..config import JoinBlockDataConfig
 
 
-def execute(data: Dict[str, pa.Table], config: JoinBlockDataConfig) -> Dict[str, pa.Table]:
+def execute(
+    data: Dict[str, pa.Table], config: JoinBlockDataConfig
+) -> Dict[str, pa.Table]:
     """Join block columns into the specified tables using a left outer join.
 
     For each target table, the block table (identified by
@@ -52,10 +54,7 @@ def execute(data: Dict[str, pa.Table], config: JoinBlockDataConfig) -> Dict[str,
         }
         if cols_to_rename:
             renamed_block = renamed_block.rename_columns(
-                [
-                    cols_to_rename.get(name, name)
-                    for name in renamed_block.schema.names
-                ]
+                [cols_to_rename.get(name, name) for name in renamed_block.schema.names]
             )
 
         data[table_name] = left.join(

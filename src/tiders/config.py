@@ -518,7 +518,7 @@ class DataFusionStepConfig:
 class JoinBlockDataConfig:
     """Configuration for the join-block-data step.
 
-    Joins block fields into other tables using a left outer join. Column 
+    Joins block fields into other tables using a left outer join. Column
     collisions are prefixed with `<block_table_name>_`.
 
     Attributes:

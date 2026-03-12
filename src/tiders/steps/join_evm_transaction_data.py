@@ -55,10 +55,7 @@ def execute(
         }
         if cols_to_rename:
             renamed_tx = renamed_tx.rename_columns(
-                [
-                    cols_to_rename.get(name, name)
-                    for name in renamed_tx.schema.names
-                ]
+                [cols_to_rename.get(name, name) for name in renamed_tx.schema.names]
             )
 
         data[table_name] = left.join(

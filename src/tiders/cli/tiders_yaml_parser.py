@@ -1046,7 +1046,9 @@ def _parse_step_config(kind: StepKind, raw: dict[str, Any], path: str) -> Any:
                 f"Valid keys: {sorted(valid_keys)}.",
                 cfg_path,
             )
-        return JoinEvmTransactionDataConfig(**{k: raw[k] for k in valid_keys if k in raw})
+        return JoinEvmTransactionDataConfig(
+            **{k: raw[k] for k in valid_keys if k in raw}
+        )
 
     if kind == StepKind.JOIN_SVM_TRANSACTION_DATA:
         valid_keys = {f.name for f in dataclasses.fields(JoinSvmTransactionDataConfig)}
@@ -1057,7 +1059,9 @@ def _parse_step_config(kind: StepKind, raw: dict[str, Any], path: str) -> Any:
                 f"Valid keys: {sorted(valid_keys)}.",
                 cfg_path,
             )
-        return JoinSvmTransactionDataConfig(**{k: raw[k] for k in valid_keys if k in raw})
+        return JoinSvmTransactionDataConfig(
+            **{k: raw[k] for k in valid_keys if k in raw}
+        )
 
     # Fallback for step kinds that don't need config parsing
     raise YamlConfigError(
@@ -1585,7 +1589,9 @@ def parse_writer(writer_raw: Any) -> Writer | list[Writer]:
     Iceberg), this function creates them from the YAML connection parameters.
     """
     if isinstance(writer_raw, list):
-        return [_parse_single_writer(w, f"writer[{i}]") for i, w in enumerate(writer_raw)]
+        return [
+            _parse_single_writer(w, f"writer[{i}]") for i, w in enumerate(writer_raw)
+        ]
 
     if not isinstance(writer_raw, dict):
         raise YamlConfigError(

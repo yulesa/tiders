@@ -7,9 +7,10 @@ Automatically creates tables from Arrow schemas and inserts data using the
 import asyncio
 import logging
 from decimal import Decimal
-from typing import Any, Dict, cast as type_cast
-from  ..config import PostgresqlWriterConfig
+from typing import Any, Dict, LiteralString, cast as type_cast
+from ..config import PostgresqlWriterConfig
 
+import psycopg.sql as sql
 import pyarrow as pa
 
 from .base import DataWriter
@@ -139,39 +140,42 @@ class Writer(DataWriter):
         self.create_tables = config.create_tables
         self.first_insert = True
 
-    def _qualified(self, table_name: str) -> str:
-        """Return ``schema.table`` qualified name."""
-        return f"{self.schema}.{table_name}"
-
     async def _create_table_if_not_exists(
         self, table_name: str, schema: pa.Schema
     ) -> None:
         """Create a PostgreSQL table from an Arrow schema using IF NOT EXISTS."""
-        columns = []
-        for field in schema:
-            pg_type = pyarrow_type_to_postgresql(field.type)
-            columns.append(f'"{field.name}" {pg_type}')
-
-        qualified = self._qualified(table_name)
-        ddl = (
-            f"CREATE TABLE IF NOT EXISTS {qualified} (\n"
-            f"    {',\n    '.join(columns)}\n"
-            f")"
+        col_defs = sql.SQL(",\n    ").join(
+            sql.SQL("{} {}").format(
+                sql.Identifier(field.name),
+                sql.SQL(
+                    type_cast(LiteralString, pyarrow_type_to_postgresql(field.type))
+                ),
+            )
+            for field in schema
         )
-        logger.debug(f"creating table with: {ddl}")
+        qualified_id = sql.SQL("{}.{}").format(
+            sql.Identifier(self.schema), sql.Identifier(table_name)
+        )
+        ddl = sql.SQL("CREATE TABLE IF NOT EXISTS {} (\n    {}\n)").format(
+            qualified_id, col_defs
+        )
+        logger.debug(f"creating table with: {ddl.as_string(self.connection)}")
         async with self.connection.cursor() as cur:
             await cur.execute(ddl)
         await self.connection.commit()
 
     async def _copy_table(self, table_name: str, table: pa.Table) -> None:
         """Stream Arrow table data into PostgreSQL via the COPY protocol."""
-        qualified = self._qualified(table_name)
-        col_names = ", ".join(f'"{f.name}"' for f in table.schema)
+        qualified_id = sql.SQL("{}.{}").format(
+            sql.Identifier(self.schema), sql.Identifier(table_name)
+        )
+        col_ids = sql.SQL(", ").join(sql.Identifier(f.name) for f in table.schema)
+        copy_stmt = sql.SQL("COPY {} ({}) FROM STDIN (FORMAT TEXT, NULL '\\N')").format(
+            qualified_id, col_ids
+        )
 
         async with self.connection.cursor() as cur:
-            async with cur.copy(
-                f"COPY {qualified} ({col_names}) FROM STDIN (FORMAT TEXT, NULL '\\N')"
-            ) as copy:
+            async with cur.copy(copy_stmt) as copy:
                 num_rows = table.num_rows
                 columns = [table.column(i) for i in range(table.num_columns)]
                 types = [table.schema.field(i).type for i in range(table.num_columns)]
@@ -190,7 +194,13 @@ class Writer(DataWriter):
                         elif isinstance(val, Decimal):
                             row_values.append(str(val))
                         else:
-                            row_values.append(str(val).replace("\t", "\\t").replace("\n", "\\n").replace("\r", "\\r").replace("\\", "\\\\"))
+                            row_values.append(
+                                str(val)
+                                .replace("\t", "\\t")
+                                .replace("\n", "\\n")
+                                .replace("\r", "\\r")
+                                .replace("\\", "\\\\")
+                            )
                     await copy.write_row(row_values)
 
         await self.connection.commit()
