@@ -1,4 +1,4 @@
-<img src="tiders_logo2.png" alt="Tiders" width="400">
+<img src="tiders_logo2.png" alt="Tiders" width="1000">
 
 [![PyPI](https://img.shields.io/badge/PyPI-lightgreen?style=for-the-badge&logo=pypi&labelColor=white)](https://pypi.org/project/tiders/)
 [![tiders-core](https://img.shields.io/badge/github-black?style=for-the-badge&logo=github)](https://github.com/yulesa/tiders-core)
