@@ -323,6 +323,7 @@ def parse_contracts(
         functions: dict[str, dict[str, str]] = {}
 
         abi_path_str = contract.get("abi")
+        abi_path: Path | None = None
         if abi_path_str is not None:
             abi_path = Path(abi_path_str)
             if not abi_path.is_absolute():
@@ -357,7 +358,7 @@ def parse_contracts(
             address=address,
             events=events,
             functions=functions,
-            abi_path=str(abi_path) if abi_path_str is not None else None,
+            abi_path=str(abi_path) if abi_path is not None else None,
         )
     return result
 

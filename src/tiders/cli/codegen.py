@@ -102,8 +102,9 @@ def generate(
         has_evm=has_evm,
         has_svm=has_svm,
     )
-    
+
     # --- contracts ---
+    contract_lines: list[str] = []
     if has_contracts:
         contract_lines = _contracts_to_code(contracts)
 
@@ -112,7 +113,9 @@ def generate(
     query_code = to_code(query, env_map, indent=0)
 
     # --- Serialize steps component ---
-    step_func_defs: list[str] = [] # For runner functions defined by sql / python_file steps
+    step_func_defs: list[
+        str
+    ] = []  # For runner functions defined by sql / python_file steps
     step_codes: list[str] = []
     for step, raw_step in zip(steps, raw_steps):
         kind_str = raw_step.get("kind", "")
@@ -121,13 +124,14 @@ def generate(
         if kind_str not in ("sql", "python_file"):
             step_codes.append(to_code(step, env_map, indent=0))
             continue
+        func_name: str
         if kind_str == "sql":
             queries = raw_step.get("config", {}).get("queries", [])
             if isinstance(queries, str):
                 queries = [queries]
             func_name, func_src = _sql_step_to_runner_def(step_name, queries)
             step_func_defs.append(func_src)
-        elif kind_str == "python_file":
+        else:  # python_file
             func_name, func_src = _python_file_step_to_source(step)
             step_func_defs.append(func_src)
 
@@ -150,9 +154,11 @@ def generate(
         )
     else:
         writer_code = to_code(writer, env_map, indent=0)
-    
+
     # --- Serialize table alias ---
-    table_aliases_code = to_code(table_aliases, env_map, indent=0) if table_aliases else None
+    table_aliases_code = (
+        to_code(table_aliases, env_map, indent=0) if table_aliases else None
+    )
 
     # --- Assemble the file ---
     lines: list[str] = []
@@ -173,7 +179,7 @@ def generate(
             lines.append(func_src)
             lines.append("")
         lines.append("")
-    
+
     if has_contracts:
         lines.extend(contract_lines)
         lines.append("")
@@ -323,7 +329,7 @@ def collect_imports(
         _scan_config_names(step)
 
     # Writer classes
-    for w in (writer if isinstance(writer, list) else [writer]):
+    for w in writer if isinstance(writer, list) else [writer]:
         _scan_config_names(w)
 
     # Table_aliases
@@ -335,9 +341,7 @@ def collect_imports(
 
     # Always include
     tiders_imports: list[str] = ["from tiders import run_pipeline"]
-    tiders_imports.append(
-        f"from tiders.config import {', '.join(sorted_config)}"
-    )
+    tiders_imports.append(f"from tiders.config import {', '.join(sorted_config)}")
 
     # --- tiders_core.ingest ---
     core_names = {"ProviderConfig", "ProviderKind", "Query", "QueryKind"}
@@ -359,7 +363,7 @@ def collect_imports(
     svm_decode_names: set[str] = set()
     for step in steps:
         if dataclasses.is_dataclass(step) and not isinstance(step, type):
-            cfg = step.config
+            cfg = getattr(step, "config", None)
             cfg_cls = type(cfg).__name__
             if cfg_cls == "SvmDecodeInstructionsConfig":
                 # InstructionSignature and its nested types

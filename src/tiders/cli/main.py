@@ -70,18 +70,18 @@ def _resolve_tiders_yaml(
             map (needed by ``codegen``).
 
     Returns:
-        ``(yaml_path, project, provider, query, steps, writer, table_aliases)``
+        ``(yaml_resolved_path, project, provider, query, steps, writer, table_aliases)``
         plus ``(raw_steps, env_map, contracts)`` appended when ``is_codegen=True``.
     """
     if yaml_path is not None:
-        yaml_path = Path(yaml_path)
-        if not yaml_path.is_file():
-            raise click.ClickException(f"YAML file not found: {yaml_path}")
+        yaml_resolved_path = Path(yaml_path)
+        if not yaml_resolved_path.is_file():
+            raise click.ClickException(f"YAML file not found: {yaml_resolved_path}")
     else:
-        yaml_path = _auto_discover_yaml()
+        yaml_resolved_path = _auto_discover_yaml()
 
-    yaml_path = yaml_path.resolve()
-    raw_yaml = _load_yaml(yaml_path)
+    yaml_resolved_path = yaml_resolved_path.resolve()
+    raw_yaml = _load_yaml(yaml_resolved_path)
 
     if env_file is not None:
         raw_yaml["environment_path"] = str(Path(env_file).resolve())
@@ -90,12 +90,12 @@ def _resolve_tiders_yaml(
     env_var_names = _collect_env_var_names(raw_yaml) if is_codegen else set()
 
     try:
-        raw_yaml = load_and_substitute(yaml_path, raw_yaml)
+        raw_yaml = load_and_substitute(yaml_resolved_path, raw_yaml)
     except (ValueError, ImportError) as exc:
         raise click.ClickException(str(exc))
 
     try:
-        yaml_dir = yaml_path.parent
+        yaml_dir = yaml_resolved_path.parent
         project, provider, query, steps, writer, table_aliases, contracts = (
             parse_tiders_yaml(raw_yaml, yaml_dir)
         )
@@ -104,7 +104,15 @@ def _resolve_tiders_yaml(
     except KeyError as exc:
         raise click.ClickException(f"Missing required YAML section: {exc}")
 
-    result = (yaml_path, project, provider, query, steps, writer, table_aliases)
+    result = (
+        yaml_resolved_path,
+        project,
+        provider,
+        query,
+        steps,
+        writer,
+        table_aliases,
+    )
 
     if is_codegen:
         raw_steps: list[dict] = raw_yaml.get("steps", [])
@@ -218,7 +226,7 @@ def _collect_env_vars(var_names: set[str]) -> dict[str, str]:
     import os
 
     return {name: os.environ[name] for name in var_names if name in os.environ}
-    
+
 
 # ---------------------------------------------------------------------------
 # Helper functions for CLI commands
@@ -233,7 +241,7 @@ def _setup_logging() -> None:
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
-    
+
 def _get_version() -> str:
     """Return the tiders package version."""
     try:
@@ -306,10 +314,10 @@ def start(
     _setup_logging()
     logger = logging.getLogger("tiders.cli")
 
-    yaml_path, project, provider, query, steps, writer, table_aliases = (
+    yaml_resolved_path, project, provider, query, steps, writer, table_aliases = (
         _resolve_tiders_yaml(yaml_path, env_file)
     )
-    logger.info(f"Using YAML: {yaml_path}")
+    logger.info(f"Using YAML: {yaml_resolved_path}")
 
     if from_block is not None:
         query.params.from_block = from_block
@@ -330,7 +338,7 @@ def start(
     logger.info(f"Starting {project.name} pipeline...")
 
     try:
-        asyncio.run(run_pipeline(pipeline, pipeline_name=yaml_path.stem))
+        asyncio.run(run_pipeline(pipeline, pipeline_name=yaml_resolved_path.stem))
     except KeyboardInterrupt:
         logger.info("Pipeline interrupted by user.")
         sys.exit(130)
@@ -371,9 +379,18 @@ def codegen(
     current working directory (project name camelCased from the YAML
     ``project.name`` field).
     """
-    yaml_path, project, provider, query, steps, writer, table_aliases, raw_steps, env_map, contracts = (
-        _resolve_tiders_yaml(yaml_path, env_file, is_codegen=True)
-    )
+    (
+        yaml_resolved_path,
+        project,
+        provider,
+        query,
+        steps,
+        writer,
+        table_aliases,
+        raw_steps,
+        env_map,
+        contracts,
+    ) = _resolve_tiders_yaml(yaml_path, env_file, is_codegen=True)
 
     try:
         code = generate(
@@ -386,11 +403,15 @@ def codegen(
             table_aliases=table_aliases,
             raw_steps=raw_steps,
             env_map=env_map,
-            yaml_path=yaml_path,
+            yaml_path=yaml_resolved_path,
         )
     except Exception as exc:
         raise click.ClickException(f"Code generation failed: {exc}")
 
-    out_path = Path(output) if output is not None else Path.cwd() / _project_name_to_filename(project.name)
+    out_path = (
+        Path(output)
+        if output is not None
+        else Path.cwd() / _project_name_to_filename(project.name)
+    )
     out_path.write_text(code, encoding="utf-8")
     click.echo(f"Generated: {out_path}")
