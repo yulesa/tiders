@@ -69,10 +69,25 @@ def generate(
     has_env_vars = bool(env_map)
     has_pa = _has_pa_types_in_steps(steps)
 
+    # --- Build import block ---
+    import_lines = collect_imports(
+        steps=steps,
+        writer=writer,
+        table_aliases=table_aliases,
+        has_env_vars=has_env_vars,
+        has_pa_types=has_pa,
+        has_evm=has_evm,
+        has_svm=has_svm,
+    )
+
+    # --- Serialize each component ---
+    provider_code = to_code(provider, env_map, indent=0)
+    query_code = to_code(query, env_map, indent=0)
+
+    
     # --- Pre-pass: collect helper function defs for sql / python_file steps ---
     step_func_defs: list[str] = []       # function source blocks to emit before steps
     step_runner_names: dict[int, str] = {}  # step index → runner func name
-    extra_imports: list[str] = []
 
     for i, raw_step in enumerate(raw_steps):
         kind_str = raw_step.get("kind", "")
@@ -93,23 +108,6 @@ def generate(
             step_func_defs.append(func_src)
             step_runner_names[i] = func_name
 
-    # --- Build import block ---
-    import_lines = collect_imports(
-        provider=provider,
-        query=query,
-        steps=steps,
-        writer=writer,
-        table_aliases=table_aliases,
-        has_env_vars=has_env_vars,
-        has_pa_types=has_pa,
-        has_evm=has_evm,
-        has_svm=has_svm,
-        extra_step_imports=extra_imports,
-    )
-
-    # --- Serialize each component ---
-    provider_code = to_code(provider, env_map, indent=0)
-    query_code = to_code(query, env_map, indent=0)
 
     # Steps: handle sql / python_file specially
     step_codes: list[str] = []
@@ -119,7 +117,6 @@ def generate(
             step_name = raw_steps[i].get("name") or raw_steps[i].get("kind", "sql")
             # Determine StepKind from the parsed step
             step_kind_code = to_code(step.kind, env_map)
-            name_part = f", name={repr(step_name)}" if step.name else ""
             step_type = _runner_step_type(raw_steps[i])
             step_code = (
                 f"Step(\n"
@@ -219,14 +216,169 @@ def generate(
     return "\n".join(lines)
 
 
+# ---------------------------------------------------------------------------
+# Import collection
+# ---------------------------------------------------------------------------
+
+# Classes that live in tiders.config
+_TIDERS_CONFIG_CLASSES = {
+    "Pipeline",
+    "Step",
+    "StepKind",
+    "Writer",
+    "WriterKind",
+    "EvmDecodeEventsConfig",
+    "SvmDecodeInstructionsConfig",
+    "SvmDecodeLogsConfig",
+    "CastConfig",
+    "CastByTypeConfig",
+    "HexEncodeConfig",
+    "U256ToBinaryConfig",
+    "Base58EncodeConfig",
+    "HexEncodeConfig",
+    "SetChainIdConfig",
+    "JoinBlockDataConfig",
+    "JoinEvmTransactionDataConfig",
+    "JoinSvmTransactionDataConfig",
+    "PolarsStepConfig",
+    "PandasStepConfig",
+    "DataFusionStepConfig",
+    "ClickHouseWriterConfig",
+    "ClickHouseSkipIndex",
+    "IcebergWriterConfig",
+    "DeltaLakeWriterConfig",
+    "PyArrowDatasetWriterConfig",
+    "DuckdbWriterConfig",
+    "PostgresqlWriterConfig",
+    "CsvWriterConfig",
+    "EvmTableAliases",
+    "SvmTableAliases",
+}
+
+
+def collect_imports(
+    steps: list[Any],
+    writer: Any,
+    table_aliases: Any,
+    has_env_vars: bool,
+    has_pa_types: bool,
+    has_evm: bool,
+    has_svm: bool,
+) -> list[str]:
+    """Build the sorted import block for the generated file."""
+    # stdlib
+    import_lines: list[str] = ["import asyncio"]
+    # os
+    if has_env_vars:
+        import_lines.append("import os")
+    # pyarrow
+    if has_pa_types:
+        import_lines.append("import pyarrow as pa")
+
+    # Collect tiders.config imports
+    ## Always include
+    config_names: set[str] = {"Pipeline", "Step", "StepKind", "Writer", "WriterKind"}
+
+    def _scan_config_names(obj: Any) -> None:
+        # If obj is None, skip.
+        if obj is None:
+            return
+        cls_name = type(obj).__name__
+        # If obj's class name is in _TIDERS_CONFIG_CLASSES, add to config_names.
+        if cls_name in _TIDERS_CONFIG_CLASSES:
+            config_names.add(cls_name)
+        # If obj is a dataclass, recurse into each field's value.
+        if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
+            for f in dataclasses.fields(obj):
+                _scan_config_names(getattr(obj, f.name))
+        # If obj is a list, recurse into each item.
+        elif isinstance(obj, list):
+            for item in obj:
+                _scan_config_names(item)
+
+    ## step classes
+    for step in steps:
+        _scan_config_names(step)
+
+    ## writer classes
+    for w in (writer if isinstance(writer, list) else [writer]):
+        _scan_config_names(w)
+
+    ## table_aliases
+    _scan_config_names(table_aliases)
+
+    sorted_config = sorted(config_names)
+
+    # from tiders
+
+    ## Always include
+    tiders_imports: list[str] = ["from tiders import run_pipeline"]
+    tiders_imports.append(
+        f"from tiders.config import {', '.join(sorted_config)}"
+    )
+
+    # tiders_core.ingest
+    core_names = {"ProviderConfig", "ProviderKind", "Query", "QueryKind"}
+    tiders_imports.append(
+        f"from tiders_core.ingest import {', '.join(sorted(core_names))}"
+    )
+    if has_evm:
+        tiders_imports.append("from tiders_core.ingest import evm")
+    if has_svm:
+        tiders_imports.append("from tiders_core.ingest import svm")
+
+    # svm_decode imports if needed
+    svm_decode_names: set[str] = set()
+    for step in steps:
+        if dataclasses.is_dataclass(step) and not isinstance(step, type):
+            cfg = step.config
+            cfg_cls = type(cfg).__name__
+            if cfg_cls == "SvmDecodeInstructionsConfig":
+                # InstructionSignature and its nested types
+                svm_decode_names.add("InstructionSignature")
+            elif cfg_cls == "SvmDecodeLogsConfig":
+                svm_decode_names.add("LogSignature")
+    if svm_decode_names:
+        tiders_imports.append(
+            f"from tiders_core.svm_decode import {', '.join(sorted(svm_decode_names))}"
+        )
+
+    import_lines.append("")
+    import_lines.extend(tiders_imports)
+    return import_lines
+
 
 # ---------------------------------------------------------------------------
-# Serializer: object → Python source string
+# Serializer: object → Python code string
 # ---------------------------------------------------------------------------
 
 
 def to_code(obj: Any, env_map: dict[str, str], indent: int = 0) -> str:
     """Recursively convert a tiders object into its Python source representation.
+
+    i.e.:
+    Input:
+    ```
+        obj = Step(
+            kind=StepKind.EVM_DECODE_EVENTS,
+            config=EvmDecodeEventsConfig(
+                event_signature="Transfer(address indexed,address indexed,uint256)",
+                filter_by_topic0=True,
+            ),
+            name="decode_transfers",
+        )
+        env_map = {"RPC_URL": "https://eth.example.com"}
+    ```
+
+    Output String:
+        Step(
+            kind=StepKind.EVM_DECODE_EVENTS,
+            config=EvmDecodeEventsConfig(
+                event_signature='Transfer(address indexed,address indexed,uint256)',
+                filter_by_topic0=True,
+            ),
+            name='decode_transfers',
+        )
 
     Args:
         obj: The object to serialize.
@@ -303,6 +455,14 @@ def to_code(obj: Any, env_map: dict[str, str], indent: int = 0) -> str:
         return repr(obj)
 
     return _sig_obj_to_code(obj, cls, sig, env_map, indent)
+
+
+def _pa_type_to_code(t: pa.DataType) -> str:
+    """Convert a pyarrow DataType to its ``pa.<func>(...)`` constructor expression."""
+    s = str(t)  # e.g. "decimal128(38, 0)", "int64", "utf8"
+    # Strip spaces inside parentheses for a clean call
+    # e.g. "decimal128(38, 0)" -> "pa.decimal128(38, 0)"
+    return f"pa.{s}"
 
 
 def _dataclass_to_code(obj: Any, env_map: dict[str, str], indent: int) -> str:
@@ -386,14 +546,6 @@ def _equals_default(value: Any, default: Any) -> bool:
         return False
 
 
-def _pa_type_to_code(t: pa.DataType) -> str:
-    """Convert a pyarrow DataType to its ``pa.<func>(...)`` constructor expression."""
-    s = str(t)  # e.g. "decimal128(38, 0)", "int64", "utf8"
-    # Strip spaces inside parentheses for a clean call
-    # e.g. "decimal128(38, 0)" -> "pa.decimal128(38, 0)"
-    return f"pa.{s}"
-
-
 def _qualified_class_name(cls: type) -> str:
     """Return the Python expression used to refer to a class in generated code.
 
@@ -408,153 +560,6 @@ def _qualified_class_name(cls: type) -> str:
     if "ingest.svm" in module or module.endswith(".svm"):
         return f"svm.{name}"
     return name
-
-
-# ---------------------------------------------------------------------------
-# Import collection
-# ---------------------------------------------------------------------------
-
-# Classes that live in tiders.config
-_TIDERS_CONFIG_CLASSES = {
-    "Pipeline",
-    "Step",
-    "StepKind",
-    "Writer",
-    "WriterKind",
-    "EvmDecodeEventsConfig",
-    "SvmDecodeInstructionsConfig",
-    "SvmDecodeLogsConfig",
-    "CastConfig",
-    "CastByTypeConfig",
-    "HexEncodeConfig",
-    "U256ToBinaryConfig",
-    "Base58EncodeConfig",
-    "HexEncodeConfig",
-    "SetChainIdConfig",
-    "JoinBlockDataConfig",
-    "JoinEvmTransactionDataConfig",
-    "JoinSvmTransactionDataConfig",
-    "PolarsStepConfig",
-    "PandasStepConfig",
-    "DataFusionStepConfig",
-    "ClickHouseWriterConfig",
-    "ClickHouseSkipIndex",
-    "IcebergWriterConfig",
-    "DeltaLakeWriterConfig",
-    "PyArrowDatasetWriterConfig",
-    "DuckdbWriterConfig",
-    "PostgresqlWriterConfig",
-    "CsvWriterConfig",
-    "EvmTableAliases",
-    "SvmTableAliases",
-}
-
-# Classes that live in tiders_core.ingest (not in evm/svm submodule)
-_TIDERS_CORE_INGEST_CLASSES = {
-    "ProviderConfig",
-    "ProviderKind",
-    "Query",
-    "QueryKind",
-}
-
-
-def collect_imports(
-    provider: Any,
-    query: Any,
-    steps: list[Any],
-    writer: Any,
-    table_aliases: Any,
-    has_env_vars: bool,
-    has_pa_types: bool,
-    has_evm: bool,
-    has_svm: bool,
-    extra_step_imports: list[str],
-) -> list[str]:
-    """Build the sorted import block for the generated file."""
-    stdlib: list[str] = ["import asyncio"]
-    if has_env_vars:
-        stdlib.append("import os")
-
-    third_party: list[str] = []
-    if has_pa_types:
-        third_party.append("import pyarrow as pa")
-
-    tiders_imports: list[str] = ["from tiders import run_pipeline"]
-
-    # Collect tiders.config names needed
-    config_names: set[str] = {"Pipeline", "Step", "StepKind", "Writer", "WriterKind"}
-
-    def _scan_config_names(obj: Any) -> None:
-        if obj is None:
-            return
-        cls_name = type(obj).__name__
-        if cls_name in _TIDERS_CONFIG_CLASSES:
-            config_names.add(cls_name)
-        if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
-            for f in dataclasses.fields(obj):
-                _scan_config_names(getattr(obj, f.name))
-        elif isinstance(obj, list):
-            for item in obj:
-                _scan_config_names(item)
-
-    for step in steps:
-        _scan_config_names(step)
-    _scan_config_names(writer if not isinstance(writer, list) else None)
-    if isinstance(writer, list):
-        for w in writer:
-            _scan_config_names(w)
-    _scan_config_names(table_aliases)
-
-    # Always include the writer config class
-    if not isinstance(writer, list):
-        writer_list = [writer]
-    else:
-        writer_list = writer
-    for w in writer_list:
-        config_names.add(type(w.config).__name__)
-
-    sorted_config = sorted(config_names)
-    tiders_imports.append(
-        f"from tiders.config import {', '.join(sorted_config)}"
-    )
-
-    # tiders_core.ingest
-    core_names = {"ProviderConfig", "ProviderKind", "Query", "QueryKind"}
-    tiders_imports.append(
-        f"from tiders_core.ingest import {', '.join(sorted(core_names))}"
-    )
-    if has_evm:
-        tiders_imports.append("from tiders_core.ingest import evm")
-    if has_svm:
-        tiders_imports.append("from tiders_core.ingest import svm")
-
-    # svm_decode imports if needed
-    svm_decode_names: set[str] = set()
-    for step in steps:
-        if dataclasses.is_dataclass(step) and not isinstance(step, type):
-            cfg = step.config
-            cfg_cls = type(cfg).__name__
-            if cfg_cls == "SvmDecodeInstructionsConfig":
-                # InstructionSignature and its nested types
-                svm_decode_names.add("InstructionSignature")
-            elif cfg_cls == "SvmDecodeLogsConfig":
-                svm_decode_names.add("LogSignature")
-    if svm_decode_names:
-        tiders_imports.append(
-            f"from tiders_core.svm_decode import {', '.join(sorted(svm_decode_names))}"
-        )
-
-    # Extra imports from inlined python_file functions
-    tiders_imports.extend(extra_step_imports)
-
-    lines: list[str] = []
-    lines.extend(stdlib)
-    if third_party:
-        lines.append("")
-        lines.extend(third_party)
-    lines.append("")
-    lines.extend(tiders_imports)
-    return lines
 
 
 # ---------------------------------------------------------------------------
@@ -600,6 +605,20 @@ def _python_file_step_to_source(step: Any) -> tuple[str, str]:
     return func_name, source
 
 
+def _runner_step_type(raw_step: dict[str, Any]) -> str:
+    """Return the config class name for a sql / python_file step."""
+    kind_str = raw_step.get("kind", "sql")
+    if kind_str == "sql":
+        return "DataFusionStepConfig"
+    # python_file: look at step_type field
+    step_type = raw_step.get("config", {}).get("step_type", "datafusion")
+    if step_type == "polars":
+        return "PolarsStepConfig"
+    if step_type == "pandas":
+        return "PandasStepConfig"
+    return "DataFusionStepConfig"
+
+
 # ---------------------------------------------------------------------------
 # Has-pyarrow-type detection
 # ---------------------------------------------------------------------------
@@ -618,22 +637,5 @@ def _has_pa_types(obj: Any) -> bool:
     return False
 
 
-
 def _has_pa_types_in_steps(steps: list[Any]) -> bool:
     return any(_has_pa_types(step) for step in steps)
-
-
-def _runner_step_type(raw_step: dict[str, Any]) -> str:
-    """Return the config class name for a sql / python_file step."""
-    kind_str = raw_step.get("kind", "sql")
-    if kind_str == "sql":
-        return "DataFusionStepConfig"
-    # python_file: look at step_type field
-    step_type = raw_step.get("config", {}).get("step_type", "datafusion")
-    if step_type == "polars":
-        return "PolarsStepConfig"
-    if step_type == "pandas":
-        return "PandasStepConfig"
-    return "DataFusionStepConfig"
-
-
