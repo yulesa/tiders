@@ -10,9 +10,23 @@ Top-level
 
 Serialization
 -------------
-- ``to_code``               — recursive object → Python source serializer
-- ``_pa_type_to_code``      — handles pyarrow DataType objects
-- ``_obj_fields``           — yields (name, value, default) for any object's fields
+- ``to_code``               — recursive function that take tiders object → Python code string
+- ``_pa_type_to_code``      — helper function that handles pyarrow DataType objects
+- ``_dataclass_to_code``    — helper function that serializes a Python dataclass, skipping defaults
+- ``_sig_obj_to_code``      — helper function that serializes a non-dataclass object via its __init__ signature
+- ``_equals_default``       — helper function that checks if a value equals its default
+- ``_qualified_class_name`` — helper function that returns the Python expression for a class name
+
+SQL / Python file steps
+-----------------------
+- ``_sql_step_to_runner_def``       — generates a runner function for a SQL step
+- ``_python_file_step_to_source``   — extracts source code from a python_file step runner
+- ``_runner_step_type``             — returns the config class name for a sql/python_file step
+
+PyArrow detection
+-----------------
+- ``_has_pa_types``           — checks if any field in an object tree is a pyarrow DataType
+- ``_has_pa_types_in_steps``  — checks if any step contains pyarrow types
 """
 
 from __future__ import annotations
@@ -55,7 +69,7 @@ def generate(
         steps: list[Step] (parsed).
         writer: Writer or list[Writer].
         table_aliases: EvmTableAliases | SvmTableAliases | None.
-        raw_steps: The raw ``steps:`` list from the YAML (before parsing).
+        raw_steps: Only necessary for 'sql' steps. Used to extract the SQL query that get's hided behind the runner function.
         env_map: Mapping of env var names to resolved values.
         yaml_path: Path to the original YAML file.
 
@@ -80,55 +94,41 @@ def generate(
         has_svm=has_svm,
     )
 
-    # --- Serialize each component ---
+    # --- Serialize provider and queries component ---
     provider_code = to_code(provider, env_map, indent=0)
     query_code = to_code(query, env_map, indent=0)
 
-    
-    # --- Pre-pass: collect helper function defs for sql / python_file steps ---
-    step_func_defs: list[str] = []       # function source blocks to emit before steps
-    step_runner_names: dict[int, str] = {}  # step index → runner func name
-
-    for i, raw_step in enumerate(raw_steps):
+    # --- Serialize steps component ---
+    step_func_defs: list[str] = [] # For runner functions defined by sql / python_file steps
+    step_codes: list[str] = []
+    for step, raw_step in zip(steps, raw_steps):
         kind_str = raw_step.get("kind", "")
         step_name = raw_step.get("name") or kind_str
 
+        if kind_str not in ("sql", "python_file"):
+            step_codes.append(to_code(step, env_map, indent=0))
+            continue
         if kind_str == "sql":
             queries = raw_step.get("config", {}).get("queries", [])
             if isinstance(queries, str):
                 queries = [queries]
             func_name, func_src = _sql_step_to_runner_def(step_name, queries)
             step_func_defs.append(func_src)
-            step_runner_names[i] = func_name
-
         elif kind_str == "python_file":
-            # The parsed step already has the loaded runner function
-            parsed_step = steps[i]
-            func_name, func_src = _python_file_step_to_source(parsed_step)
+            func_name, func_src = _python_file_step_to_source(step)
             step_func_defs.append(func_src)
-            step_runner_names[i] = func_name
 
+        step_kind_code = to_code(step.kind, env_map)
+        step_type = _runner_step_type(raw_step)
+        step_codes.append(
+            f"Step(\n"
+            f"    kind={step_kind_code},\n"
+            f"    config={step_type}(runner={func_name}),\n"
+            f"    name={repr(step.name or step_name)},\n"
+            f")"
+        )
 
-    # Steps: handle sql / python_file specially
-    step_codes: list[str] = []
-    for i, step in enumerate(steps):
-        if i in step_runner_names:
-            func_name = step_runner_names[i]
-            step_name = raw_steps[i].get("name") or raw_steps[i].get("kind", "sql")
-            # Determine StepKind from the parsed step
-            step_kind_code = to_code(step.kind, env_map)
-            step_type = _runner_step_type(raw_steps[i])
-            step_code = (
-                f"Step(\n"
-                f"    kind={step_kind_code},\n"
-                f"    config={step_type}(runner={func_name}),\n"
-                f"    name={repr(step.name or step_name)},\n"
-                f")"
-            )
-            step_codes.append(step_code)
-        else:
-            step_codes.append(to_code(step, env_map, indent=0))
-
+    # --- Serialize writers ---
     if isinstance(writer, list):
         writer_code = (
             "[\n    "
@@ -137,7 +137,8 @@ def generate(
         )
     else:
         writer_code = to_code(writer, env_map, indent=0)
-
+    
+    # --- Serialize table alias ---
     table_aliases_code = to_code(table_aliases, env_map, indent=0) if table_aliases else None
 
     # --- Assemble the file ---
@@ -187,7 +188,7 @@ def generate(
         lines.append(f"writer = {writer_code}")
     lines.append("")
 
-    # table_aliases (optional)
+    # table_aliases
     if table_aliases_code:
         lines.append(f"table_aliases = {table_aliases_code}")
         lines.append("")
@@ -217,7 +218,7 @@ def generate(
 
 
 # ---------------------------------------------------------------------------
-# Import collection
+# Collect Imports
 # ---------------------------------------------------------------------------
 
 # Classes that live in tiders.config
@@ -266,17 +267,17 @@ def collect_imports(
     has_svm: bool,
 ) -> list[str]:
     """Build the sorted import block for the generated file."""
-    # stdlib
+    # --- stdlib ---
     import_lines: list[str] = ["import asyncio"]
-    # os
+    # --- # os ---
     if has_env_vars:
         import_lines.append("import os")
-    # pyarrow
+    # --- pyarrow ---
     if has_pa_types:
         import_lines.append("import pyarrow as pa")
 
-    # Collect tiders.config imports
-    ## Always include
+    # --- Collect tiders.config imports ---
+    # Always include
     config_names: set[str] = {"Pipeline", "Step", "StepKind", "Writer", "WriterKind"}
 
     def _scan_config_names(obj: Any) -> None:
@@ -296,28 +297,28 @@ def collect_imports(
             for item in obj:
                 _scan_config_names(item)
 
-    ## step classes
+    # Step classes
     for step in steps:
         _scan_config_names(step)
 
-    ## writer classes
+    # Writer classes
     for w in (writer if isinstance(writer, list) else [writer]):
         _scan_config_names(w)
 
-    ## table_aliases
+    # Table_aliases
     _scan_config_names(table_aliases)
 
     sorted_config = sorted(config_names)
 
-    # from tiders
+    # --- from tiders ---
 
-    ## Always include
+    # Always include
     tiders_imports: list[str] = ["from tiders import run_pipeline"]
     tiders_imports.append(
         f"from tiders.config import {', '.join(sorted_config)}"
     )
 
-    # tiders_core.ingest
+    # --- tiders_core.ingest ---
     core_names = {"ProviderConfig", "ProviderKind", "Query", "QueryKind"}
     tiders_imports.append(
         f"from tiders_core.ingest import {', '.join(sorted(core_names))}"
@@ -327,7 +328,7 @@ def collect_imports(
     if has_svm:
         tiders_imports.append("from tiders_core.ingest import svm")
 
-    # svm_decode imports if needed
+    # --- svm_decode imports if needed ---
     svm_decode_names: set[str] = set()
     for step in steps:
         if dataclasses.is_dataclass(step) and not isinstance(step, type):

@@ -81,26 +81,20 @@ def _resolve_tiders_yaml(
         yaml_path = _auto_discover_yaml()
 
     yaml_path = yaml_path.resolve()
-    raw_config = _load_yaml(yaml_path)
+    raw_yaml = _load_yaml(yaml_path)
 
     if env_file is not None:
-        raw_config["environment_path"] = str(Path(env_file).resolve())
-
-    if is_codegen:
-        env_var_names = _collect_env_var_names(raw_config)
-        raw_steps: list[dict] = raw_config.get("steps", [])
-        if not isinstance(raw_steps, list):
-            raw_steps = []
+        raw_yaml["environment_path"] = str(Path(env_file).resolve())
 
     try:
-        raw_config = load_and_substitute(yaml_path, raw_config)
+        raw_yaml = load_and_substitute(yaml_path, raw_yaml)
     except (ValueError, ImportError) as exc:
         raise click.ClickException(str(exc))
 
     try:
         yaml_dir = yaml_path.parent
         project, provider, query, steps, writer, table_aliases, _contracts = (
-            parse_tiders_yaml(raw_config, yaml_dir)
+            parse_tiders_yaml(raw_yaml, yaml_dir)
         )
     except YamlConfigError as exc:
         raise click.ClickException(f"Config error: {exc}")
@@ -108,7 +102,12 @@ def _resolve_tiders_yaml(
         raise click.ClickException(f"Missing required YAML section: {exc}")
 
     result = (yaml_path, project, provider, query, steps, writer, table_aliases)
+    
     if is_codegen:
+        env_var_names = _collect_env_var_names(raw_yaml)
+        raw_steps: list[dict] = raw_yaml.get("steps", [])
+        if not isinstance(raw_steps, list):
+            raw_steps = []
         env_map = _collect_env_vars(env_var_names)
         return result + (raw_steps, env_map)
     return result

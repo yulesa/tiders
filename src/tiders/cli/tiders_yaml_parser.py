@@ -1173,6 +1173,7 @@ def _build_sql_runner(
     result DataFrame is stored under ``"sql_result"``.
     """
 
+    # Create a runner closure
     def sql_runner(session_ctx: Any, tables: dict, context: Any) -> dict:
         result = dict(tables)
         for sql in queries:
@@ -1187,6 +1188,7 @@ def _build_sql_runner(
                 result["sql_result"] = df
         return result
 
+    # Return the closure as the runner function for the SQL step
     return sql_runner
 
 
