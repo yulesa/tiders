@@ -8,6 +8,10 @@ Top-level
 - ``generate``              — assembles the full Python source file
 - ``collect_imports``       — determines the set of import lines needed
 
+Contract code generation
+------------------------
+- ``_contracts_to_code``     — generates contract variable definitions (ABI loading or inlined dicts)
+
 Serialization
 -------------
 - ``to_code``               — recursive function that take tiders object → Python code string
@@ -51,6 +55,7 @@ _INDENT = "    "
 
 def generate(
     project: Any,
+    contracts: dict[str, Any],
     provider: Any,
     query: Any,
     steps: list[Any],
@@ -72,19 +77,23 @@ def generate(
         raw_steps: Only necessary for 'sql' steps. Used to extract the SQL query that get's hided behind the runner function.
         env_map: Mapping of env var names to resolved values.
         yaml_path: Path to the original YAML file.
+        contracts: Mapping of contract name to ContractInfo, if any.
 
     Returns:
         A string containing the complete generated Python source.
     """
     from tiders_core.ingest import QueryKind
 
+    has_contracts = bool(contracts)
+    has_abi_paths = has_contracts and any(c.abi_path for c in contracts.values())
+    has_env_vars = bool(env_map)
     has_evm = query.kind == QueryKind.EVM
     has_svm = query.kind == QueryKind.SVM
-    has_env_vars = bool(env_map)
     has_pa = _has_pa_types_in_steps(steps)
 
     # --- Build import block ---
     import_lines = collect_imports(
+        has_abi_paths=has_abi_paths,
         steps=steps,
         writer=writer,
         table_aliases=table_aliases,
@@ -93,6 +102,10 @@ def generate(
         has_evm=has_evm,
         has_svm=has_svm,
     )
+    
+    # --- contracts ---
+    if has_contracts:
+        contract_lines = _contracts_to_code(contracts)
 
     # --- Serialize provider and queries component ---
     provider_code = to_code(provider, env_map, indent=0)
@@ -159,6 +172,10 @@ def generate(
         for func_src in step_func_defs:
             lines.append(func_src)
             lines.append("")
+        lines.append("")
+    
+    if has_contracts:
+        lines.extend(contract_lines)
         lines.append("")
 
     # provider
@@ -265,6 +282,7 @@ def collect_imports(
     has_pa_types: bool,
     has_evm: bool,
     has_svm: bool,
+    has_abi_paths: bool,
 ) -> list[str]:
     """Build the sorted import block for the generated file."""
     # --- stdlib ---
@@ -272,6 +290,9 @@ def collect_imports(
     # --- # os ---
     if has_env_vars:
         import_lines.append("import os")
+    # --- pathlib ---
+    if has_abi_paths:
+        import_lines.append("from pathlib import Path")
     # --- pyarrow ---
     if has_pa_types:
         import_lines.append("import pyarrow as pa")
@@ -328,6 +349,12 @@ def collect_imports(
     if has_svm:
         tiders_imports.append("from tiders_core.ingest import svm")
 
+    # --- tiders_core ABI helpers ---
+    if has_abi_paths:
+        tiders_imports.append(
+            "from tiders_core import evm_abi_events, evm_abi_functions"
+        )
+
     # --- svm_decode imports if needed ---
     svm_decode_names: set[str] = set()
     for step in steps:
@@ -347,6 +374,49 @@ def collect_imports(
     import_lines.append("")
     import_lines.extend(tiders_imports)
     return import_lines
+
+
+# ---------------------------------------------------------------------------
+# Contract code generation
+# ---------------------------------------------------------------------------
+
+
+def _contracts_to_code(contracts: dict[str, Any]) -> list[str]:
+    """Generate Python code lines for contract definitions.
+
+    For contracts with an ABI path, generates code that loads the ABI file
+    and parses events/functions using ``evm_abi_events`` / ``evm_abi_functions``.
+    For contracts without an ABI path, inlines the resolved event/function data
+    as dict literals.
+    """
+    lines: list[str] = []
+
+    for name, contract in contracts.items():
+        if contract.abi_path:
+            lines.append(f"# Contract: {name}")
+            lines.append(f"{name}_abi_path = Path({repr(contract.abi_path)})")
+            lines.append(f"{name}_abi_json = {name}_abi_path.read_text()")
+            lines.append(
+                f"{name}_events = {{"
+                f"ev.name: {{'topic0': ev.topic0, 'signature': ev.signature}} "
+                f"for ev in evm_abi_events({name}_abi_json)}}"
+            )
+            lines.append(
+                f"{name}_functions = {{"
+                f"fn.name: {{'selector': fn.selector, 'signature': fn.signature}} "
+                f"for fn in evm_abi_functions({name}_abi_json)}}"
+            )
+        else:
+            lines.append(f"# Contract: {name}")
+            lines.append(f"{name}_events = {repr(contract.events)}")
+            lines.append(f"{name}_functions = {repr(contract.functions)}")
+
+        if contract.address:
+            lines.append(f"{name}_address = {repr(contract.address)}")
+
+        lines.append("")
+
+    return lines
 
 
 # ---------------------------------------------------------------------------

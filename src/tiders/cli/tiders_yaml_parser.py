@@ -287,6 +287,7 @@ class ContractInfo:
     address: str
     events: dict[str, dict[str, str]]  # event_name -> {topic0, signature}
     functions: dict[str, dict[str, str]]  # func_name -> {selector, signature}
+    abi_path: str | None = None  # path to the ABI JSON file, if provided
 
 
 def parse_contracts(
@@ -352,7 +353,11 @@ def parse_contracts(
                 ) from e
 
         result[name] = ContractInfo(
-            name=name, address=address, events=events, functions=functions
+            name=name,
+            address=address,
+            events=events,
+            functions=functions,
+            abi_path=str(abi_path) if abi_path_str is not None else None,
         )
     return result
 

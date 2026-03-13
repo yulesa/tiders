@@ -66,12 +66,12 @@ def _resolve_tiders_yaml(
     Args:
         yaml_path: Optional explicit path to the YAML file.
         env_file: Optional path to a .env file override.
-        keep_raw: When ``True``, also returns the raw steps list and env var
+        is_codegen: When ``True``, also returns the raw steps list and env var
             map (needed by ``codegen``).
 
     Returns:
         ``(yaml_path, project, provider, query, steps, writer, table_aliases)``
-        plus ``(raw_steps, env_map)`` appended when ``keep_raw=True``.
+        plus ``(raw_steps, env_map, contracts)`` appended when ``is_codegen=True``.
     """
     if yaml_path is not None:
         yaml_path = Path(yaml_path)
@@ -86,6 +86,9 @@ def _resolve_tiders_yaml(
     if env_file is not None:
         raw_yaml["environment_path"] = str(Path(env_file).resolve())
 
+    # Collect env var names before substitution replaces ${VAR} patterns
+    env_var_names = _collect_env_var_names(raw_yaml) if is_codegen else set()
+
     try:
         raw_yaml = load_and_substitute(yaml_path, raw_yaml)
     except (ValueError, ImportError) as exc:
@@ -93,7 +96,7 @@ def _resolve_tiders_yaml(
 
     try:
         yaml_dir = yaml_path.parent
-        project, provider, query, steps, writer, table_aliases, _contracts = (
+        project, provider, query, steps, writer, table_aliases, contracts = (
             parse_tiders_yaml(raw_yaml, yaml_dir)
         )
     except YamlConfigError as exc:
@@ -102,14 +105,13 @@ def _resolve_tiders_yaml(
         raise click.ClickException(f"Missing required YAML section: {exc}")
 
     result = (yaml_path, project, provider, query, steps, writer, table_aliases)
-    
+
     if is_codegen:
-        env_var_names = _collect_env_var_names(raw_yaml)
         raw_steps: list[dict] = raw_yaml.get("steps", [])
         if not isinstance(raw_steps, list):
             raw_steps = []
         env_map = _collect_env_vars(env_var_names)
-        return result + (raw_steps, env_map)
+        return result + (raw_steps, env_map, contracts)
     return result
 
 
@@ -369,13 +371,14 @@ def codegen(
     current working directory (project name camelCased from the YAML
     ``project.name`` field).
     """
-    yaml_path, project, provider, query, steps, writer, table_aliases, raw_steps, env_map = (
+    yaml_path, project, provider, query, steps, writer, table_aliases, raw_steps, env_map, contracts = (
         _resolve_tiders_yaml(yaml_path, env_file, is_codegen=True)
     )
 
     try:
         code = generate(
             project=project,
+            contracts=contracts,
             provider=provider,
             query=query,
             steps=steps,
