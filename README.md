@@ -39,6 +39,8 @@ See [getting started section](https://yulesa.github.io/tiders-docs/getting_start
 
 Both modes share the same pipeline engine.
 
+You can also use `tiders codegen` to generate a Python script from a YAML config — a quick way to move from no-code to full Python control.
+
 ## Installation
 
 ```bash
@@ -62,7 +64,9 @@ pip install "tiders[cli]"
 - Rust-Powered Speed: Core tasks like decoding and transforming data are handled in Rust, giving you massive performance without needing to learn a low-level language.
 - Parallel Execution: Tiders doesn't wait around. While it's writing the last batch of data to your database, it’s already fetching and processing the next one in the background.
 
-## Data providers
+## Data Providers
+
+Connect to the best data sources in the industry without vendor lock-in. Tiders decouples the provider from the destination, giving you a consistent way to fetch data.
 
 | Provider | Ethereum (EVM) | Solana (SVM) |
 |---|---|---|
@@ -70,7 +74,21 @@ pip install "tiders[cli]"
 | [SQD](https://docs.sqd.ai/) | ✅ | ✅ |
 | RPC | ✅ | ❌ |
 
-## Supported output formats
+## Transformations
+
+Leverage the tools you already know. Tiders automatically convert data batch-by-batch into your engine's native format, allowing for seamless, custom transformations on every incoming increment immediately before it is written.
+
+
+| Engine | Data format in your function | Best for |
+|---|---|---|
+| **Polars** | `Dict[str, pl.DataFrame]` | Fast columnar operations, expressive API |
+| **Pandas** | `Dict[str, pd.DataFrame]` | Familiar API, complex row-level operations |
+| **DataFusion** | `Dict[str, datafusion.DataFrame]` | SQL-based transformations, lazy evaluation |
+| **PyArrow** | `Dict[str, pa.Table]` | Zero-copy, direct Arrow manipulation |
+
+## Supported Output Formats
+
+Whether local or a production-grade data lake, Tiders handles the schema mapping and batch-loading to your destination of choice.
 
 | Writer | Format |
 |---|---|

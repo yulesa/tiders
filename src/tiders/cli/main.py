@@ -253,25 +253,22 @@ def _get_version() -> str:
 
 
 def _project_name_to_filename(name: str) -> str:
-    """Convert a project name to a camelCase Python filename.
+    """Convert a project name to a snake_case Python filename.
 
     Examples:
-        "rETH_transfer"        → "rETHTransfer.py"
-        "reth_transfer_nocode" → "rethTransferNocode.py"
-        "MyPipeline"           → "myPipeline.py"
+        "rETH_transfer"        → "reth_transfer.py"
+        "reth_transfer_nocode" → "reth_transfer_nocode.py"
+        "MyPipeline"           → "my_pipeline.py"
     """
-    # Split on non-alphanumeric chars (spaces, underscores, hyphens, etc.)
-    parts = re.split(r"[^a-zA-Z0-9]+", name)
-    parts = [p for p in parts if p]
-    if not parts:
+    # Insert underscore before uppercase letters that follow a lowercase letter or digit
+    s = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", name)
+    # Replace non-alphanumeric chars with underscores
+    s = re.sub(r"[^a-zA-Z0-9]+", "_", s)
+    # Collapse multiple underscores and strip leading/trailing
+    s = re.sub(r"_+", "_", s).strip("_").lower()
+    if not s:
         return "pipeline.py"
-
-    # Lowercase the first part's first char, capitalize the rest
-    camel = parts[0][0].lower() + parts[0][1:]
-    for part in parts[1:]:
-        camel += part[0].upper() + part[1:]
-
-    return f"{camel}.py"
+    return f"{s}.py"
 
 
 # ---------------------------------------------------------------------------
@@ -375,9 +372,9 @@ def codegen(
     writes an equivalent inline Python script that constructs and runs the
     same pipeline using the tiders Python SDK.
 
-    If OUTPUT is omitted, the file is saved as ``<ProjectName>.py`` in the
-    current working directory (project name camelCased from the YAML
-    ``project.name`` field).
+    If OUTPUT is omitted, the file is saved as ``<project_name>.py`` in the
+    current working directory (project name converted to snake_case from the
+    YAML ``project.name`` field).
     """
     (
         yaml_resolved_path,
