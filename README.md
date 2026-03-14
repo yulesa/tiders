@@ -43,14 +43,10 @@ You can also use `tiders codegen` to generate a Python script from a YAML config
 
 ## Installation
 
-```bash
-pip install tiders tiders-core
-```
-
-For the CLI (no-code mode):
+For both CLI and SDK
 
 ```bash
-pip install "tiders[cli]"
+pip install tiders
 ```
 
 ## Features
