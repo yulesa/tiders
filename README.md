@@ -1,13 +1,30 @@
-<img src="tiders_logo2.png" alt="Tiders" width="1000">
+<img src="/resources/tiders_logo2.png" alt="Tiders" width="1000">
 
 [![PyPI](https://img.shields.io/badge/PyPI-lightgreen?style=for-the-badge&logo=pypi&labelColor=white)](https://pypi.org/project/tiders/)
 [![tiders-core](https://img.shields.io/badge/github-black?style=for-the-badge&logo=github)](https://github.com/yulesa/tiders-core)
 [![tiders-rpc-client](https://img.shields.io/badge/github-black?style=for-the-badge&logo=github)](https://github.com/yulesa/tiders-rpc-client)
 [![Documentation](https://img.shields.io/badge/documentation-blue?style=for-the-badge&logo=readthedocs)](https://yulesa.github.io/tiders-docs/)
 
-Tiders is a python library for building blockchain data pipelines.
+Tiders is an open-source framework that simplifies getting data out of blockchains and into your favorite tools. Whether you are building a DeFi dashboard, tracking NFT transfers, or running complex analytics, Tiders handles the heavy lifting of fetching, cleaning, transforming and storing blockchain data.
 
-It is designed to make building production-ready blockchain data pipelines easy.
+Tiders is modular. A Tiders pipeline is built from four components:
+
+| Component | Description |
+|---|---|
+| `Provider` | Data source (HyperSync, SQD, or RPC) |
+| `Query` | What data to fetch (block range, transaction, logs, filters, field selection) |
+| `Steps` | Transformations to apply (decode, cast, encode, custom) |
+| `Writer` | Output destination |
+
+<img src="/resources/four_pipeline_components.png" alt="four_pipeline_components" width="1000">
+
+**Why Tiders?**
+
+Most indexers lock you into a specific platform or database. Tiders is built to be modular, meaning you can swap parts in and out without breaking your setup:
+- Swap Providers: Don't like your current data source? Switch between HyperSync, SQD, or a standard RPC node by changing one line of code.
+- Plug-and-Play data transformations: Need to decode smart contract events or change data types? Use our built-in Rust-powered steps or write your own custom logic.
+- Write Anywhere: Send your data to a local DuckDB file for prototyping, or a production-grade ClickHouse or PostgreSQL instance when you're ready to scale.
+- Modular Reusable Pipelines: Protocols often reuse the same data structures. You don't need write modules from scratch every time. Since Tiders pipelines are regular Python objects, you can build functions around them, reuse across pipelines, or set input parameters to customize as needed.  
 
 ## Getting Started
 
@@ -21,6 +38,8 @@ See [getting started section](https://yulesa.github.io/tiders-docs/getting_start
 | **CLI (No-Code)** | Write a YAML config, run `tiders start` | Quick setup, no Python required, standard pipelines |
 
 Both modes share the same pipeline engine.
+
+You can also use `tiders codegen` to generate a Python script from a YAML config — a quick way to move from no-code to full Python control.
 
 ## Installation
 
@@ -36,28 +55,18 @@ pip install "tiders[cli]"
 
 ## Features
 
-- High-level `datasets` API and flexible pipeline API.
-- `High-performance`, `low-cost` and `uniform` data access. Ability to use advanced providers without platform lock-in.
-- Included functionality to `decode`, `validate`, `transform` blockchain data. All implemented in `rust` for performance.
-- Allow advance transformations using `polars`, `pyarrow`, `datafusion`, `pandas`.
-- `Schema inference` automatically creates output tables.
-- Keep datasets fresh with `continuous ingestion`.
-- `Parallelized`, next batch of data is being fetched while your pre-processing function is running, while the database writes are being executed in parallel. Don't need to hand optimize anything.
-- Included library of transformations.
-- Included functionality to implement `crash-resistance`.
+- Continuous Ingestion: Keep your datasets live and fresh. Tiders can poll the chain head to ensure your data is always up to date.
+- Switch Providers: Move between HyperSync, SQD, or standard RPC nodes with a single config change.
+- No Vendor Lock-in: Use the best data providers in the industry without being tied to their specific platforms or database formats.
+- Custom Logic: Easily extend and customize your pipeline code in Python for complete flexibility.
+- Advanced Analytics: Seamlessly works with industry-standard tools like Polars, Pandas, Data fusion and PyArrow as the data is fetched.
+- Multiple Outputs: Send the same data to a local file and a production database simultaneously.
+- Rust-Powered Speed: Core tasks like decoding and transforming data are handled in Rust, giving you massive performance without needing to learn a low-level language.
+- Parallel Execution: Tiders doesn't wait around. While it's writing the last batch of data to your database, it’s already fetching and processing the next one in the background.
 
-## Core Concepts
+## Data Providers
 
-A pipeline is built from four components:
-
-| Component | Description |
-|---|---|
-| `ProviderConfig` | Data source (HyperSync, SQD, or RPC) |
-| `Query` | What data to fetch (block range, filters, field selection) |
-| `Step` | Transformations to apply (decode, cast, encode, custom) |
-| `Writer` | Output destination |
-
-## Data providers
+Connect to the best data sources in the industry without vendor lock-in. Tiders decouples the provider from the destination, giving you a consistent way to fetch data.
 
 | Provider | Ethereum (EVM) | Solana (SVM) |
 |---|---|---|
@@ -65,7 +74,21 @@ A pipeline is built from four components:
 | [SQD](https://docs.sqd.ai/) | ✅ | ✅ |
 | RPC | ✅ | ❌ |
 
-## Supported output formats
+## Transformations
+
+Leverage the tools you already know. Tiders automatically convert data batch-by-batch into your engine's native format, allowing for seamless, custom transformations on every incoming increment immediately before it is written.
+
+
+| Engine | Data format in your function | Best for |
+|---|---|---|
+| **Polars** | `Dict[str, pl.DataFrame]` | Fast columnar operations, expressive API |
+| **Pandas** | `Dict[str, pd.DataFrame]` | Familiar API, complex row-level operations |
+| **DataFusion** | `Dict[str, datafusion.DataFrame]` | SQL-based transformations, lazy evaluation |
+| **PyArrow** | `Dict[str, pa.Table]` | Zero-copy, direct Arrow manipulation |
+
+## Supported Output Formats
+
+Whether local or a production-grade data lake, Tiders handles the schema mapping and batch-loading to your destination of choice.
 
 | Writer | Format |
 |---|---|
@@ -93,6 +116,10 @@ RUST_LOG=trace uv run examples/path/to/my/example
 ```
 
 ## Development
+
+Tiders is composed of some repositories. 3 owned ones.
+
+<img src="/resources/tiders_architecture.png" alt="Tiders-architecture" width="1000">
 
 This repo uses `uv` for development. Clone all three projects side by side:
 

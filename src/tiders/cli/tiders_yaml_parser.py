@@ -287,6 +287,7 @@ class ContractInfo:
     address: str
     events: dict[str, dict[str, str]]  # event_name -> {topic0, signature}
     functions: dict[str, dict[str, str]]  # func_name -> {selector, signature}
+    abi_path: str | None = None  # path to the ABI JSON file, if provided
 
 
 def parse_contracts(
@@ -322,6 +323,7 @@ def parse_contracts(
         functions: dict[str, dict[str, str]] = {}
 
         abi_path_str = contract.get("abi")
+        abi_path: Path | None = None
         if abi_path_str is not None:
             abi_path = Path(abi_path_str)
             if not abi_path.is_absolute():
@@ -352,7 +354,11 @@ def parse_contracts(
                 ) from e
 
         result[name] = ContractInfo(
-            name=name, address=address, events=events, functions=functions
+            name=name,
+            address=address,
+            events=events,
+            functions=functions,
+            abi_path=str(abi_path) if abi_path is not None else None,
         )
     return result
 
@@ -1173,6 +1179,7 @@ def _build_sql_runner(
     result DataFrame is stored under ``"sql_result"``.
     """
 
+    # Create a runner closure
     def sql_runner(session_ctx: Any, tables: dict, context: Any) -> dict:
         result = dict(tables)
         for sql in queries:
@@ -1187,6 +1194,7 @@ def _build_sql_runner(
                 result["sql_result"] = df
         return result
 
+    # Return the closure as the runner function for the SQL step
     return sql_runner
 
 

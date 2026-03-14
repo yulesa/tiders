@@ -2,18 +2,31 @@
 
 Provides the ``tiders`` console command with subcommands:
 
-- ``tiders start [CONFIG_PATH]`` — run a pipeline from a YAML config file.
-- ``tiders --help`` — show version and available commands.
+- ``tiders start [YAML_PATH]``   — run a pipeline from a YAML file.
+- ``tiders codegen [YAML_PATH]`` — generate a Python script from a YAML file.
+- ``tiders --help``                — show version and available commands.
 
-Execution flow for ``tiders start``
-------------------------------------
-1. ``main``                — click group entry point, handles --version/--help
-2. ``start``               — resolve config path, parse, build pipeline, run it
-3.   ``_setup_logging``    — configure structured logging (timestamps + levels)
-4.   ``_auto_discover_config`` — find tiders.yaml/yml in cwd if no path given
-5.     ``_is_tiders_config``   — check if a YAML file has provider: + query: keys
-6.       ``_load_yaml``        — load and validate a YAML file as a dict
-7.   ``_get_version``      — read package version from importlib.metadata
+Command implementations
+-----------------------
+- ``start``    — resolve YAML, build Pipeline, run with asyncio
+- ``codegen``  — resolve YAML, generate equivalent Python script, write to file
+
+Resolving the tiders YAML
+--------------
+- ``_resolve_tiders_yaml``   — resolve path, load YAML, substitute env vars, parse into tiders objects
+- ``_auto_discover_yaml``  — find tiders.yaml/yml in cwd if no path given
+- ``_is_tiders_yaml``      — check if a YAML file has ``provider:`` + ``query:`` keys
+- ``_load_yaml``             — load and validate a YAML file as a dict
+- ``_collect_env_var_names`` — scan raw YAML for ``${VAR}`` patterns and collect var names
+- ``_collect_env_var_names_recursive`` — recursive helper for scanning YAML structures
+- ``_collect_env_vars``      — build a {var_name: value} map from os.environ for a set of variable names (after .env loading)
+
+Helpers
+--------------
+- ``_get_version``           — read package version from importlib.metadata
+- ``_setup_logging``         — configure structured logging (timestamps + levels)
+- ``_project_name_to_filename`` — converts project name to camelCase filename
+
 """
 
 from __future__ import annotations
@@ -21,25 +34,145 @@ from __future__ import annotations
 import asyncio
 import logging
 import sys
+import re
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
 
 import click
 
+from .codegen import generate
 from .env import load_and_substitute
-from .tiders_yaml_parser import (
-    YamlConfigError,
-    parse_tiders_yaml,
-)
+from .tiders_yaml_parser import YamlConfigError, parse_tiders_yaml
+
+from .env import ENV_VAR_PATTERN
 
 
-def _setup_logging() -> None:
-    """Configure structured logging with timestamps and level prefixes."""
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
+# ---------------------------------------------------------------------------
+# YAML file loading and parsing
+# ---------------------------------------------------------------------------
+
+
+def _resolve_tiders_yaml(
+    yaml_path: Optional[str],
+    env_file: Optional[str],
+    *,
+    is_codegen: bool = False,
+) -> tuple:
+    """Create all tiders objects from a YAML file.
+
+    Resolves the YAML path, loads the file, applies env-file override,
+    substitutes environment variables, and parses all pipeline sections.
+
+    Args:
+        yaml_path: Optional explicit path to the YAML file.
+        env_file: Optional path to a .env file override.
+        is_codegen: When ``True``, also returns the raw steps list and env var
+            map (needed by ``codegen``).
+
+    Returns:
+        ``(yaml_resolved_path, project, provider, query, steps, writer, table_aliases)``
+        plus ``(raw_steps, env_map, contracts)`` appended when ``is_codegen=True``.
+    """
+    if yaml_path is not None:
+        yaml_resolved_path = Path(yaml_path)
+        if not yaml_resolved_path.is_file():
+            raise click.ClickException(f"YAML file not found: {yaml_resolved_path}")
+    else:
+        yaml_resolved_path = _auto_discover_yaml()
+
+    yaml_resolved_path = yaml_resolved_path.resolve()
+    raw_yaml = _load_yaml(yaml_resolved_path)
+
+    if env_file is not None:
+        raw_yaml["environment_path"] = str(Path(env_file).resolve())
+
+    # Collect env var names before substitution replaces ${VAR} patterns
+    env_var_names = _collect_env_var_names(raw_yaml) if is_codegen else set()
+
+    try:
+        raw_yaml = load_and_substitute(yaml_resolved_path, raw_yaml)
+    except (ValueError, ImportError) as exc:
+        raise click.ClickException(str(exc))
+
+    try:
+        yaml_dir = yaml_resolved_path.parent
+        project, provider, query, steps, writer, table_aliases, contracts = (
+            parse_tiders_yaml(raw_yaml, yaml_dir)
+        )
+    except YamlConfigError as exc:
+        raise click.ClickException(f"Config error: {exc}")
+    except KeyError as exc:
+        raise click.ClickException(f"Missing required YAML section: {exc}")
+
+    result = (
+        yaml_resolved_path,
+        project,
+        provider,
+        query,
+        steps,
+        writer,
+        table_aliases,
     )
+
+    if is_codegen:
+        raw_steps: list[dict] = raw_yaml.get("steps", [])
+        if not isinstance(raw_steps, list):
+            raw_steps = []
+        env_map = _collect_env_vars(env_var_names)
+        return result + (raw_steps, env_map, contracts)
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Auto-discovering YAML files in the current directory
+# ---------------------------------------------------------------------------
+
+
+def _auto_discover_yaml() -> Path:
+    """Search the current directory for a tiders YAML file.
+
+    Checks for tiders.yaml / tiders.yml first, then falls back to scanning all
+    .yaml / .yml files for ones containing ``provider:`` and ``query:`` keys.
+
+    Returns:
+        The path to the discovered YAML file.
+
+    Raises:
+        click.ClickException: If zero or multiple YAML files are found.
+    """
+    cwd = Path.cwd()
+
+    # Check well-known names first
+    for name in ("tiders.yaml", "tiders.yml"):
+        candidate = cwd / name
+        if candidate.is_file():
+            return candidate
+
+    # Scan all YAML files in current directory
+    all_yamls = set(cwd.glob("*.yaml")) | set(cwd.glob("*.yml"))
+    candidates = [p for p in sorted(all_yamls) if _is_tiders_yaml(p)]
+
+    if len(candidates) == 1:
+        return candidates[0]
+    if len(candidates) == 0:
+        raise click.ClickException(
+            "No tiders YAML found in current directory. "
+            "Create a tiders.yaml or pass a path: tiders start <pipeline.yaml>"
+        )
+    names = [c.name for c in candidates]
+    raise click.ClickException(
+        f"Multiple tiders YAML files found: {names}. "
+        f"Please specify which one to use: tiders start <pipeline.yaml>"
+    )
+
+
+def _is_tiders_yaml(path: Path) -> bool:
+    """Check if a YAML file looks like a tiders pipeline (has provider: and query: keys)."""
+    try:
+        data = _load_yaml(path)
+        return "provider" in data and "query" in data
+    except Exception:
+        return False
 
 
 def _load_yaml(path: Path) -> dict:
@@ -59,50 +192,53 @@ def _load_yaml(path: Path) -> dict:
     return data
 
 
-def _is_tiders_config(path: Path) -> bool:
-    """Check if a YAML file looks like a tiders config (has provider: and query: keys)."""
-    try:
-        data = _load_yaml(path)
-        return "provider" in data and "query" in data
-    except Exception:
-        return False
+# ---------------------------------------------------------------------------
+# Env var collection (run on raw YAML *before* substitution)
+# ---------------------------------------------------------------------------
 
 
-def _auto_discover_config() -> Path:
-    """Search the current directory for a tiders YAML config file.
+def _collect_env_var_names(obj: Any) -> set[str]:
+    """Scan a raw YAML structure for ``${VAR}`` patterns and return the variable names."""
+    names: set[str] = set()
+    _collect_env_var_names_recursive(obj, names)
+    return names
 
-    Checks for tiders.yaml / tiders.yml first, then falls back to scanning all
-    .yaml / .yml files for ones containing ``provider:`` and ``query:`` keys.
 
-    Returns:
-        The path to the discovered config file.
+def _collect_env_var_names_recursive(obj: Any, names: set[str]) -> None:
+    if isinstance(obj, str):
+        for match in ENV_VAR_PATTERN.finditer(obj):
+            names.add(match.group(1))
+    elif isinstance(obj, dict):
+        for v in obj.values():
+            _collect_env_var_names_recursive(v, names)
+    elif isinstance(obj, list):
+        for item in obj:
+            _collect_env_var_names_recursive(item, names)
 
-    Raises:
-        click.ClickException: If zero or multiple configs are found.
+
+def _collect_env_vars(var_names: set[str]) -> dict[str, str]:
+    """Build a ``{var_name: resolved_value}`` map from ``os.environ``.
+
+    Call this *after* loading the .env file so that values loaded from .env
+    are included.  Variables missing from ``os.environ`` are silently skipped
+    (they will have already caused an error during substitution).
     """
-    cwd = Path.cwd()
+    import os
 
-    # Check well-known names first
-    for name in ("tiders.yaml", "tiders.yml"):
-        candidate = cwd / name
-        if candidate.is_file():
-            return candidate
+    return {name: os.environ[name] for name in var_names if name in os.environ}
 
-    # Scan all YAML files in current directory
-    all_yamls = set(cwd.glob("*.yaml")) | set(cwd.glob("*.yml"))
-    candidates = [p for p in sorted(all_yamls) if _is_tiders_config(p)]
 
-    if len(candidates) == 1:
-        return candidates[0]
-    if len(candidates) == 0:
-        raise click.ClickException(
-            "No tiders config found in current directory. "
-            "Create a tiders.yaml or pass a path: tiders start <config.yaml>"
-        )
-    names = [c.name for c in candidates]
-    raise click.ClickException(
-        f"Multiple tiders configs found: {names}. "
-        f"Please specify which one to use: tiders start <config.yaml>"
+# ---------------------------------------------------------------------------
+# Helper functions for CLI commands
+# ---------------------------------------------------------------------------
+
+
+def _setup_logging() -> None:
+    """Configure structured logging with timestamps and level prefixes."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
 
 
@@ -116,6 +252,30 @@ def _get_version() -> str:
         return "dev"
 
 
+def _project_name_to_filename(name: str) -> str:
+    """Convert a project name to a snake_case Python filename.
+
+    Examples:
+        "rETH_transfer"        → "reth_transfer.py"
+        "reth_transfer_nocode" → "reth_transfer_nocode.py"
+        "MyPipeline"           → "my_pipeline.py"
+    """
+    # Insert underscore before uppercase letters that follow a lowercase letter or digit
+    s = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", name)
+    # Replace non-alphanumeric chars with underscores
+    s = re.sub(r"[^a-zA-Z0-9]+", "_", s)
+    # Collapse multiple underscores and strip leading/trailing
+    s = re.sub(r"_+", "_", s).strip("_").lower()
+    if not s:
+        return "pipeline.py"
+    return f"{s}.py"
+
+
+# ---------------------------------------------------------------------------
+# CLI command implementations
+# ---------------------------------------------------------------------------
+
+
 @click.group()
 @click.version_option(version=_get_version(), prog_name="tiders")
 def main() -> None:
@@ -123,7 +283,7 @@ def main() -> None:
 
 
 @main.command()
-@click.argument("config_path", required=False, type=click.Path(exists=False))
+@click.argument("yaml_path", required=False, type=click.Path(exists=False))
 @click.option(
     "--from-block", type=int, default=None, help="Override the starting block number."
 )
@@ -137,63 +297,32 @@ def main() -> None:
     help="Path to .env file (overrides default discovery).",
 )
 def start(
-    config_path: Optional[str],
+    yaml_path: Optional[str],
     from_block: Optional[int],
     to_block: Optional[int],
     env_file: Optional[str],
 ) -> None:
-    """Run a pipeline from a YAML config file.
+    """Run a pipeline from a YAML file.
 
-    If CONFIG_PATH is omitted, searches the current directory for a tiders
-    config (tiders.yaml, tiders.yml, or any .yaml/.yml with provider: and
+    If YAML_PATH is omitted, searches the current directory for a tiders
+    pipeline (tiders.yaml, tiders.yml, or any .yaml/.yml with provider: and
     query: keys).
     """
     _setup_logging()
     logger = logging.getLogger("tiders.cli")
 
-    # Resolve config path
-    if config_path is not None:
-        yaml_path = Path(config_path)
-        if not yaml_path.is_file():
-            raise click.ClickException(f"Config file not found: {config_path}")
-    else:
-        yaml_path = _auto_discover_config()
+    yaml_resolved_path, project, provider, query, steps, writer, table_aliases = (
+        _resolve_tiders_yaml(yaml_path, env_file)
+    )
+    logger.info(f"Using YAML: {yaml_resolved_path}")
 
-    yaml_path = yaml_path.resolve()
-    logger.info(f"Using config: {yaml_path}")
+    if from_block is not None:
+        query.params.from_block = from_block
+    if to_block is not None:
+        query.params.to_block = to_block
 
-    # Load and parse YAML
-    raw_config = _load_yaml(yaml_path)
-
-    # Handle --env-file override
-    if env_file is not None:
-        raw_config["environment_path"] = str(Path(env_file).resolve())
-
-    # Env substitution
-    try:
-        raw_config = load_and_substitute(yaml_path, raw_config)
-    except (ValueError, ImportError) as exc:
-        raise click.ClickException(str(exc))
-
-    # Parse all sections
-    try:
-        yaml_dir = yaml_path.parent
-        project, provider, query, steps, writer, table_aliases, _contracts = (
-            parse_tiders_yaml(raw_config, yaml_dir)
-        )
-
-        # Apply --from-block / --to-block overrides
-        if from_block is not None:
-            query.params.from_block = from_block
-        if to_block is not None:
-            query.params.to_block = to_block
-    except YamlConfigError as exc:
-        raise click.ClickException(f"Config error: {exc}")
-    except KeyError as exc:
-        raise click.ClickException(f"Missing required config section: {exc}")
-
-    # Build pipeline
     from tiders.config import Pipeline
+    from tiders.pipeline import run_pipeline
 
     pipeline = Pipeline(
         provider=provider,
@@ -205,11 +334,8 @@ def start(
 
     logger.info(f"Starting {project.name} pipeline...")
 
-    # Run
-    from tiders.pipeline import run_pipeline
-
     try:
-        asyncio.run(run_pipeline(pipeline, pipeline_name=yaml_path.stem))
+        asyncio.run(run_pipeline(pipeline, pipeline_name=yaml_resolved_path.stem))
     except KeyboardInterrupt:
         logger.info("Pipeline interrupted by user.")
         sys.exit(130)
@@ -218,3 +344,71 @@ def start(
         sys.exit(1)
 
     logger.info("Pipeline completed successfully.")
+
+
+@main.command()
+@click.argument("yaml_path", required=False, type=click.Path(exists=False))
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(dir_okay=False),
+    default=None,
+    help="Output file path. Defaults to <ProjectName>.py in the current directory.",
+)
+@click.option(
+    "--env-file",
+    type=click.Path(exists=True, dir_okay=False),
+    default=None,
+    help="Path to .env file (overrides default discovery).",
+)
+def codegen(
+    yaml_path: Optional[str],
+    output: Optional[str],
+    env_file: Optional[str],
+) -> None:
+    """Generate a Python script from a YAML pipeline file.
+
+    Reads the YAML file (same discovery rules as ``tiders start``) and
+    writes an equivalent inline Python script that constructs and runs the
+    same pipeline using the tiders Python SDK.
+
+    If OUTPUT is omitted, the file is saved as ``<project_name>.py`` in the
+    current working directory (project name converted to snake_case from the
+    YAML ``project.name`` field).
+    """
+    (
+        yaml_resolved_path,
+        project,
+        provider,
+        query,
+        steps,
+        writer,
+        table_aliases,
+        raw_steps,
+        env_map,
+        contracts,
+    ) = _resolve_tiders_yaml(yaml_path, env_file, is_codegen=True)
+
+    try:
+        code = generate(
+            project=project,
+            contracts=contracts,
+            provider=provider,
+            query=query,
+            steps=steps,
+            writer=writer,
+            table_aliases=table_aliases,
+            raw_steps=raw_steps,
+            env_map=env_map,
+            yaml_path=yaml_resolved_path,
+        )
+    except Exception as exc:
+        raise click.ClickException(f"Code generation failed: {exc}")
+
+    out_path = (
+        Path(output)
+        if output is not None
+        else Path.cwd() / _project_name_to_filename(project.name)
+    )
+    out_path.write_text(code, encoding="utf-8")
+    click.echo(f"Generated: {out_path}")
