@@ -1,6 +1,6 @@
 [project]
 name = "tiders"
-version = "0.1.0"
+version = "0.1.1"
 description = "Library for building blockchain pipelines"
 repository = "https://github.com/yulesa/tiders"
 homepage = "https://github.com/yulesa/tiders"
