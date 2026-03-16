@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import sys
 import re
 from pathlib import Path
@@ -40,6 +41,7 @@ from typing import Optional, Any
 
 import click
 
+from .abi_fetching import fetch_abi_single, fetch_abis_from_yaml
 from .codegen import generate
 from .env import load_and_substitute
 from .tiders_yaml_parser import YamlConfigError, parse_tiders_yaml
@@ -412,3 +414,112 @@ def codegen(
     )
     out_path.write_text(code, encoding="utf-8")
     click.echo(f"Generated: {out_path}")
+
+
+@main.command()
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(dir_okay=True),
+    default=None,
+    help="Output path. In single-address mode: file path. In YAML mode: directory.",
+)
+@click.option(
+    "--address",
+    type=str,
+    default=None,
+    help="Contract address to fetch ABI for (single-address mode).",
+)
+@click.option(
+    "--chain-id",
+    type=int,
+    default=1,
+    help="Chain ID of the contract (default: 1, Ethereum mainnet).",
+)
+@click.option(
+    "--env-file",
+    type=click.Path(exists=True, dir_okay=False),
+    default=None,
+    help="Path to .env file (overrides default discovery).",
+)
+@click.option(
+    "--yaml-path",
+    type=click.Path(exists=True, dir_okay=False),
+    default=None,
+    help="Path to YAML file with contract declarations.",
+)
+@click.option(
+    "--source",
+    type=click.Choice(["sourcify", "etherscan"]),
+    default="sourcify",
+    help="ABI source to try first (default: sourcify). Falls back to the other.",
+)
+def abi(
+    output: Optional[str],
+    address: Optional[str],
+    chain_id: int,
+    env_file: Optional[str],
+    yaml_path: Optional[str],
+    source: str,
+) -> None:
+    """Fetch contract ABIs from Sourcify or Etherscan.
+
+    Three usage modes:
+
+    \b
+    1. Single address:  tiders abi --address 0x... [--chain-id 1]
+    2. From YAML file:  tiders abi --yaml-path pipeline.yaml
+    3. Auto-discover:   tiders abi  (finds tiders.yaml in cwd)
+
+    In YAML mode, iterates through declared contracts and fetches missing ABIs.
+    """
+    _setup_logging()
+    logger = logging.getLogger("tiders.cli")
+
+    if address is not None and yaml_path is not None:
+        raise click.UsageError(
+            "--address and --yaml-path are mutually exclusive. "
+            "Use --address for a single contract or --yaml-path for YAML mode."
+        )
+
+    # Load .env file: explicit path, or default to .env in cwd
+    from .env import load_env_file
+
+    if env_file is not None:
+        load_env_file(Path(env_file))
+    else:
+        load_env_file(Path.cwd() / ".env")
+
+    etherscan_api_key = os.environ.get("ETHERSCAN_API_KEY")
+
+    # Mode 1: single address
+    if address is not None:
+        try:
+            saved_path = fetch_abi_single(
+                address, chain_id, source, etherscan_api_key, output
+            )
+        except RuntimeError as exc:
+            raise click.ClickException(str(exc))
+        click.echo(f"Saved ABI: {saved_path}")
+        return
+
+    # Mode 2 & 3: YAML-based
+    if yaml_path is not None:
+        yaml_resolved_path = Path(yaml_path).resolve()
+    else:
+        yaml_resolved_path = _auto_discover_yaml().resolve()
+
+    logger.info(f"Using YAML: {yaml_resolved_path}")
+
+    try:
+        saved = fetch_abis_from_yaml(
+            yaml_resolved_path, chain_id, source, etherscan_api_key, output, env_file
+        )
+    except ValueError as exc:
+        raise click.ClickException(str(exc))
+
+    for name, path in saved:
+        click.echo(f"Saved ABI for '{name}': {path}")
+
+    if not saved:
+        click.echo("No new ABIs to fetch (all contracts already have ABIs).")
