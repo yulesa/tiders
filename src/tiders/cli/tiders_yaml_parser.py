@@ -288,6 +288,7 @@ class ContractInfo:
     events: dict[str, dict[str, str]]  # event_name -> {topic0, signature}
     functions: dict[str, dict[str, str]]  # func_name -> {selector, signature}
     abi_path: str | None = None  # path to the ABI JSON file, if provided
+    chain_id: int | None = None  # chain ID (e.g. 1 for Ethereum mainnet)
 
 
 def parse_contracts(
@@ -306,7 +307,7 @@ def parse_contracts(
         name = contract["name"]
         ctx = f"contracts[{i}] ({name})"
 
-        valid_keys = {"name", "address", "abi"}
+        valid_keys = {"name", "address", "abi", "chain_id"}
         unknown = set(contract.keys()) - valid_keys
         if unknown:
             raise YamlConfigError(
@@ -353,12 +354,22 @@ def parse_contracts(
                     f"{ctx}.abi",
                 ) from e
 
+        chain_id = contract.get("chain_id")
+        if chain_id is not None:
+            from .abi_fetching import resolve_chain_id
+
+            try:
+                chain_id = resolve_chain_id(chain_id)
+            except ValueError as e:
+                raise YamlConfigError(str(e), f"{ctx}.chain_id")
+
         result[name] = ContractInfo(
             name=name,
             address=address,
             events=events,
             functions=functions,
             abi_path=str(abi_path) if abi_path is not None else None,
+            chain_id=chain_id,
         )
     return result
 

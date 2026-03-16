@@ -9,6 +9,8 @@ Tiders is an open-source framework that simplifies getting data out of blockchai
 
 Tiders is modular. A Tiders pipeline is built from four components:
 
+<img src="/resources/four_pipeline_components.png" alt="four_pipeline_components" width="1000">
+
 | Component | Description |
 |---|---|
 | `Provider` | Data source (HyperSync, SQD, or RPC) |
@@ -16,9 +18,7 @@ Tiders is modular. A Tiders pipeline is built from four components:
 | `Steps` | Transformations to apply (decode, cast, encode, custom) |
 | `Writer` | Output destination |
 
-<img src="/resources/four_pipeline_components.png" alt="four_pipeline_components" width="1000">
-
-**Why Tiders?**
+## Why Tiders?
 
 Most indexers lock you into a specific platform or database. Tiders is built to be modular, meaning you can swap parts in and out without breaking your setup:
 - Swap Providers: Don't like your current data source? Switch between HyperSync, SQD, or a standard RPC node by changing one line of code.
@@ -70,6 +70,8 @@ Connect to the best data sources in the industry without vendor lock-in. Tiders 
 | [SQD](https://docs.sqd.ai/) | ✅ | ✅ |
 | RPC | ✅ | ❌ |
 
+Tiders can support new providers. If your project has custom APIs to fetch blockchain data, especially ones that support server-side filtering, you can create a client for it, similar to the [Tiders RPC client](https://github.com/yulesa/tiders-rpc-client). Get in touch with us.
+
 ## Transformations
 
 Leverage the tools you already know. Tiders automatically convert data batch-by-batch into your engine's native format, allowing for seamless, custom transformations on every incoming increment immediately before it is written.
@@ -86,15 +88,15 @@ Leverage the tools you already know. Tiders automatically convert data batch-by-
 
 Whether local or a production-grade data lake, Tiders handles the schema mapping and batch-loading to your destination of choice.
 
-| Writer | Format |
-|---|---|
-| **DuckDB** | DuckDB database |
-| **ClickHouse** | ClickHouse |
-| **Iceberg** | Apache Iceberg |
-| **Delta Lake** | Delta Lake |
-| **PyArrow Dataset** | Parquet files |
-| **PostgreSQL** | PostgreSQL |
-| **CSV** | CSV files |
+| Destination | Type | Description |
+|---|---|---|
+| **DuckDB** | Database | Embedded analytical database, great for local exploration and prototyping |
+| **ClickHouse** | Database | Column-oriented database optimized for real-time analytical queries |
+| **PostgreSQL** | Database | General-purpose relational database with broad ecosystem support |
+| **Apache Iceberg** | Table Format | Open table format for large-scale analytics on data lakes |
+| **Delta Lake** | Table Format | Storage layer with ACID transactions for data lakes |
+| **Parquet** | File | Columnar file format, efficient for analytical workloads |
+| **CSV** | File | Plain-text format, widely compatible and easy to inspect |
 
 ## Usage examples
 
