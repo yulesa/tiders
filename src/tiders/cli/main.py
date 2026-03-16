@@ -41,7 +41,7 @@ from typing import Optional, Any
 
 import click
 
-from .abi_fetching import fetch_abi_single, fetch_abis_from_yaml
+from .abi_fetching import fetch_abi_single, fetch_abis_from_yaml, resolve_chain_id
 from .codegen import generate
 from .env import load_and_substitute
 from .tiders_yaml_parser import YamlConfigError, parse_tiders_yaml
@@ -432,9 +432,9 @@ def codegen(
 )
 @click.option(
     "--chain-id",
-    type=int,
-    default=1,
-    help="Chain ID of the contract (default: 1, Ethereum mainnet).",
+    type=str,
+    default="1",
+    help="Chain ID or name (e.g. '1', 'ethereum', 'base'). Default: 1.",
 )
 @click.option(
     "--env-file",
@@ -457,7 +457,7 @@ def codegen(
 def abi(
     output: Optional[str],
     address: Optional[str],
-    chain_id: int,
+    chain_id: str,
     env_file: Optional[str],
     yaml_path: Optional[str],
     source: str,
@@ -492,11 +492,16 @@ def abi(
 
     etherscan_api_key = os.environ.get("ETHERSCAN_API_KEY")
 
+    try:
+        resolved_chain_id = resolve_chain_id(chain_id)
+    except ValueError as exc:
+        raise click.ClickException(str(exc))
+
     # Mode 1: single address
     if address is not None:
         try:
             saved_path = fetch_abi_single(
-                address, chain_id, source, etherscan_api_key, output
+                address, resolved_chain_id, source, etherscan_api_key, output
             )
         except RuntimeError as exc:
             raise click.ClickException(str(exc))
@@ -513,7 +518,12 @@ def abi(
 
     try:
         saved = fetch_abis_from_yaml(
-            yaml_resolved_path, chain_id, source, etherscan_api_key, output, env_file
+            yaml_resolved_path,
+            resolved_chain_id,
+            source,
+            etherscan_api_key,
+            output,
+            env_file,
         )
     except ValueError as exc:
         raise click.ClickException(str(exc))

@@ -2,11 +2,13 @@
 
 Functions
 ---------
-- ``fetch_abi_single``    — fetch and save ABI for a single contract address
-- ``fetch_abis_from_yaml`` — fetch and save ABIs for all contracts in a YAML file
-- ``fetch_abi_sourcify``  — fetch ABI from Sourcify v2 API
-- ``fetch_abi_etherscan`` — fetch ABI from Etherscan-compatible API
-- ``fetch_abi``           — orchestrate fetching with fallback between sources
+- ``fetch_abi_single``       — fetch and save ABI for a single contract address
+- ``fetch_abis_from_yaml``   — fetch and save ABIs for all contracts in a YAML file
+- ``fetch_abi_sourcify``     — fetch ABI from Sourcify v2 API
+- ``fetch_abi_etherscan``    — fetch ABI from Etherscan-compatible API
+- ``fetch_abi``              — orchestrate fetching with fallback between
+- ``_update_yaml_abi_paths`` — helper to update YAML file with new ABI paths after fetching
+- ``resolve_chain_id``       — helper to resolve chain ID from string input (e.g. "ethereum" -> 1)
 """
 
 from __future__ import annotations
@@ -16,11 +18,11 @@ import logging
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
 logger = logging.getLogger("tiders.cli")
 
-_REQUEST_TIMEOUT = 30  # 
+_REQUEST_TIMEOUT = 30  # seconds
 
 
 # ---------------------------------------------------------------------------
@@ -52,7 +54,9 @@ def fetch_abi_single(
     """
     abi_json = fetch_abi(chain_id, address, source, etherscan_api_key)
 
-    out_path = Path(output) if output is not None else Path.cwd() / f"{address}.abi.json"
+    out_path = (
+        Path(output) if output is not None else Path.cwd() / f"{address}.abi.json"
+    )
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(abi_json, encoding="utf-8")
     return out_path
@@ -72,7 +76,7 @@ def fetch_abis_from_yaml(
 
     Args:
         yaml_path: Resolved path to the YAML file.
-        cli_chain_id: Default chain ID from CLI (used when contract has no network).
+        cli_chain_id: Default chain ID from CLI (used when contract has no chain_id set).
         source: Primary source — ``"sourcify"`` or ``"etherscan"``.
         etherscan_api_key: API key for Etherscan (may be ``None``).
         output: Optional output directory path. Defaults to the YAML directory.
@@ -144,11 +148,11 @@ def fetch_abis_from_yaml(
             )
             continue
 
-        # Determine chain_id: use contract's network if set, else CLI default
-        chain_id = contract.network
+        # Determine chain_id: use contract's chain_id if set, else CLI default
+        chain_id = contract.chain_id
         if chain_id is None:
             logger.warning(
-                f"Contract '{contract.name}': network not specified, "
+                f"Contract '{contract.name}': chain_id not specified, "
                 f"defaulting to chain_id={cli_chain_id}"
             )
             chain_id = cli_chain_id
@@ -161,6 +165,10 @@ def fetch_abis_from_yaml(
 
         expected_path.write_text(abi_json, encoding="utf-8")
         saved.append((contract.name, expected_path))
+
+    # Update the YAML file with abi paths for newly fetched ABIs
+    if saved:
+        _update_yaml_abi_paths(yaml_path, yaml_dir, saved)
 
     return saved
 
@@ -185,28 +193,40 @@ def fetch_abi(
     Raises:
         RuntimeError: If both sources fail.
     """
+
+    def _fetch_sourcify():
+        return fetch_abi_sourcify(chain_id, address)
+
+    def _fetch_etherscan():
+        assert etherscan_api_key is not None
+        return fetch_abi_etherscan(chain_id, address, etherscan_api_key)
+
+    def _warn_no_etherscan_key():
+        logger.warning(
+            "ETHERSCAN_API_KEY not set in environment variables, skipping Etherscan"
+        )
+        return None
+
     if source == "sourcify":
         primary_name, fallback_name = "Sourcify", "Etherscan"
-        primary_fn = lambda: fetch_abi_sourcify(chain_id, address)
+        primary_fn = _fetch_sourcify
         if etherscan_api_key:
-            fallback_fn = lambda: fetch_abi_etherscan(chain_id, address, etherscan_api_key)
+            fallback_fn = _fetch_etherscan
         else:
-            fallback_fn = lambda: (
-                logger.warning("ETHERSCAN_API_KEY not set in environment variables, skipping Etherscan") or None
-            )
+            fallback_fn = _warn_no_etherscan_key
     else:
         primary_name, fallback_name = "Etherscan", "Sourcify"
         if etherscan_api_key:
-            primary_fn = lambda: fetch_abi_etherscan(chain_id, address, etherscan_api_key)
+            primary_fn = _fetch_etherscan
         else:
-            primary_fn = lambda: (
-                logger.warning("ETHERSCAN_API_KEY not set in environment variables, skipping Etherscan") or None
-            )
-        fallback_fn = lambda: fetch_abi_sourcify(chain_id, address)
+            primary_fn = _warn_no_etherscan_key
+        fallback_fn = _fetch_sourcify
 
     result = primary_fn()
     if result is not None:
-        logger.info(f"Successfully fetched ABI for {address} on chain {chain_id} from {primary_name}")
+        logger.info(
+            f"Successfully fetched ABI for {address} on chain {chain_id} from {primary_name}"
+        )
         return result
 
     logger.warning(
@@ -216,7 +236,9 @@ def fetch_abi(
 
     result = fallback_fn()
     if result is not None:
-        logger.info(f"Successfully fetched ABI for {address} on chain {chain_id} from {fallback_name}")
+        logger.info(
+            f"Successfully fetched ABI for {address} on chain {chain_id} from {fallback_name}"
+        )
         return result
 
     raise RuntimeError(
@@ -255,9 +277,7 @@ def fetch_abi_sourcify(chain_id: int, address: str) -> str | None:
         return None
 
     if not isinstance(abi, list):
-        logger.warning(
-            f"Sourcify ABI for {address} on chain {chain_id} is not a list"
-        )
+        logger.warning(f"Sourcify ABI for {address} on chain {chain_id} is not a list")
         return None
 
     return json.dumps(abi, indent=2)
@@ -266,9 +286,7 @@ def fetch_abi_sourcify(chain_id: int, address: str) -> str | None:
 _ETHERSCAN_V2_BASE = "https://api.etherscan.io/v2/api"
 
 
-def fetch_abi_etherscan(
-    chain_id: int, address: str, api_key: str
-) -> str | None:
+def fetch_abi_etherscan(chain_id: int, address: str, api_key: str) -> str | None:
     """Fetch a contract ABI from the Etherscan v2 API.
 
     Uses the unified v2 endpoint which supports all chains via the
@@ -292,21 +310,15 @@ def fetch_abi_etherscan(
         with urllib.request.urlopen(url, timeout=_REQUEST_TIMEOUT) as resp:
             data = json.loads(resp.read().decode())
     except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError) as e:
-        logger.warning(
-            f"Etherscan fetch failed for {address} on chain {chain_id}: {e}"
-        )
+        logger.warning(f"Etherscan fetch failed for {address} on chain {chain_id}: {e}")
         return None
     except Exception as e:
-        logger.warning(
-            f"Etherscan fetch failed for {address} on chain {chain_id}: {e}"
-        )
+        logger.warning(f"Etherscan fetch failed for {address} on chain {chain_id}: {e}")
         return None
 
     if data.get("status") != "1" or "result" not in data:
         msg = data.get("result", data.get("message", "unknown error"))
-        logger.warning(
-            f"Etherscan API error for {address} on chain {chain_id}: {msg}"
-        )
+        logger.warning(f"Etherscan API error for {address} on chain {chain_id}: {msg}")
         return None
 
     # Etherscan returns the ABI as a JSON string in "result"
@@ -329,3 +341,87 @@ def fetch_abi_etherscan(
     return json.dumps(abi, indent=2)
 
 
+def _update_yaml_abi_paths(
+    yaml_path: Path,
+    yaml_dir: Path,
+    saved: list[tuple[str, Path]],
+) -> None:
+    """Update the YAML config file, adding the abi path for each fetched contract.
+
+    Uses plain text manipulation to preserve formatting and comments.
+    For each saved contract, finds its ``- name: X`` block and inserts
+    an ``abi:`` line after the ``address:`` line.
+    """
+    import re
+
+    yaml_text = yaml_path.read_text(encoding="utf-8")
+
+    for name, abi_path in saved:
+        # Compute path relative to yaml dir for portability
+        try:
+            rel_path = "./" + str(abi_path.relative_to(yaml_dir))
+        except ValueError:
+            rel_path = str(abi_path)
+
+        # Match: "- name: <name>" followed by indented keys, capturing
+        # the indent and address line so we can insert abi: after it.
+        pattern = re.compile(
+            rf"(- name:\s*{re.escape(name)}\s*\n"
+            rf"(?:[ \t]+\w+:.*\n)*?)"
+            rf"([ \t]+)(address:.*\n)",
+            re.MULTILINE,
+        )
+
+        match = pattern.search(yaml_text)
+        if not match:
+            logger.warning(
+                f"Could not locate contract '{name}' in {yaml_path} to update abi path"
+            )
+            continue
+
+        indent = match.group(2)
+        insert_pos = match.end(3)
+        yaml_text = (
+            yaml_text[:insert_pos]
+            + f"{indent}abi: {rel_path}\n"
+            + yaml_text[insert_pos:]
+        )
+
+    yaml_path.write_text(yaml_text, encoding="utf-8")
+
+
+# Chain name to chain ID mapping
+CHAIN_NAME_TO_ID: dict[str, int] = {
+    "mainnet": 1,
+    "ethereum": 1,
+    "ethereum-mainnet": 1,
+    "bnb": 56,
+    "base": 8453,
+    "arbitrum": 42161,
+    "polygon": 137,
+    "scroll": 534352,
+    "unichain": 130,
+}
+
+
+def resolve_chain_id(value: str | int) -> int:
+    """Resolve a chain ID from a name or numeric value.
+
+    Accepts an integer, a numeric string (e.g. ``"1"``), or a chain name
+    (e.g. ``"ethereum"``).
+
+    Raises:
+        ValueError: If the value is not a known chain name or valid integer.
+    """
+    if isinstance(value, int):
+        return value
+    value_lower = str(value).strip().lower()
+    if value_lower in CHAIN_NAME_TO_ID:
+        return CHAIN_NAME_TO_ID[value_lower]
+    try:
+        return int(value_lower)
+    except ValueError:
+        valid = sorted(CHAIN_NAME_TO_ID.keys())
+        raise ValueError(
+            f"Unknown chain '{value}'. Use a chain ID number or one of: {valid}"
+        )
