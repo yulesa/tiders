@@ -165,6 +165,64 @@ def fetch_abis_from_yaml(
     return saved
 
 
+def fetch_abi(
+    chain_id: int,
+    address: str,
+    source: str = "sourcify",
+    etherscan_api_key: Optional[str] = None,
+) -> str:
+    """Fetch a contract ABI, trying ``source`` first then falling back.
+
+    Args:
+        chain_id: The chain ID.
+        address: The contract address (0x-prefixed).
+        source: Primary source — ``"sourcify"`` or ``"etherscan"``.
+        etherscan_api_key: API key for Etherscan (required for Etherscan calls).
+
+    Returns:
+        The ABI as a pretty-printed JSON string.
+
+    Raises:
+        RuntimeError: If both sources fail.
+    """
+    if source == "sourcify":
+        primary_name, fallback_name = "Sourcify", "Etherscan"
+        primary_fn = lambda: fetch_abi_sourcify(chain_id, address)
+        if etherscan_api_key:
+            fallback_fn = lambda: fetch_abi_etherscan(chain_id, address, etherscan_api_key)
+        else:
+            fallback_fn = lambda: (
+                logger.warning("ETHERSCAN_API_KEY not set in environment variables, skipping Etherscan") or None
+            )
+    else:
+        primary_name, fallback_name = "Etherscan", "Sourcify"
+        if etherscan_api_key:
+            primary_fn = lambda: fetch_abi_etherscan(chain_id, address, etherscan_api_key)
+        else:
+            primary_fn = lambda: (
+                logger.warning("ETHERSCAN_API_KEY not set in environment variables, skipping Etherscan") or None
+            )
+        fallback_fn = lambda: fetch_abi_sourcify(chain_id, address)
+
+    result = primary_fn()
+    if result is not None:
+        logger.info(f"Successfully fetched ABI for {address} on chain {chain_id} from {primary_name}")
+        return result
+
+    logger.warning(
+        f"{primary_name} failed for {address} on chain {chain_id}, "
+        f"trying {fallback_name}"
+    )
+
+    result = fallback_fn()
+    if result is not None:
+        logger.info(f"Successfully fetched ABI for {address} on chain {chain_id} from {fallback_name}")
+        return result
+
+    raise RuntimeError(
+        f"Failed to fetch ABI for {address} on chain {chain_id}: "
+        f"both {primary_name} and {fallback_name} failed"
+    )
 
 
 def fetch_abi_sourcify(chain_id: int, address: str) -> str | None:
@@ -177,7 +235,7 @@ def fetch_abi_sourcify(chain_id: int, address: str) -> str | None:
     Returns:
         The ABI as a JSON string, or ``None`` if the fetch failed.
     """
-    url = f"https://sourcify.dev/server/v2/contract/{chain_id}/{address}"
+    url = f"https://sourcify.dev/server/v2/contract/{chain_id}/{address}?fields=abi"
     try:
         with urllib.request.urlopen(url, timeout=_REQUEST_TIMEOUT) as resp:
             data = json.loads(resp.read().decode())
@@ -205,24 +263,16 @@ def fetch_abi_sourcify(chain_id: int, address: str) -> str | None:
     return json.dumps(abi, indent=2)
 
 
-# Etherscan-compatible API base URLs by chain ID
-_ETHERSCAN_API_URLS: dict[int, str] = {
-    1: "https://api.etherscan.io",
-    5: "https://api-goerli.etherscan.io",
-    11155111: "https://api-sepolia.etherscan.io",
-    10: "https://api-optimistic.etherscan.io",
-    42161: "https://api.arbiscan.io",
-    137: "https://api.polygonscan.com",
-    8453: "https://api.basescan.org",
-    56: "https://api.bscscan.com",
-    43114: "https://api.snowtrace.io",
-    250: "https://api.ftmscan.com",
-}
+_ETHERSCAN_V2_BASE = "https://api.etherscan.io/v2/api"
+
 
 def fetch_abi_etherscan(
     chain_id: int, address: str, api_key: str
 ) -> str | None:
-    """Fetch a contract ABI from an Etherscan-compatible API.
+    """Fetch a contract ABI from the Etherscan v2 API.
+
+    Uses the unified v2 endpoint which supports all chains via the
+    ``chainid`` query parameter.
 
     Args:
         chain_id: The chain ID.
@@ -232,16 +282,10 @@ def fetch_abi_etherscan(
     Returns:
         The ABI as a JSON string, or ``None`` if the fetch failed.
     """
-    base_url = _ETHERSCAN_API_URLS.get(chain_id)
-    if base_url is None:
-        logger.warning(
-            f"No known Etherscan API URL for chain_id={chain_id}, skipping Etherscan"
-        )
-        return None
-
     url = (
-        f"{base_url}/api"
-        f"?module=contract&action=getabi"
+        f"{_ETHERSCAN_V2_BASE}"
+        f"?chainid={chain_id}"
+        f"&module=contract&action=getabi"
         f"&address={address}&apikey={api_key}"
     )
     try:
@@ -285,70 +329,3 @@ def fetch_abi_etherscan(
     return json.dumps(abi, indent=2)
 
 
-def fetch_abi(
-    chain_id: int,
-    address: str,
-    source: str = "sourcify",
-    etherscan_api_key: Optional[str] = None,
-) -> str:
-    """Fetch a contract ABI, trying ``source`` first then falling back.
-
-    Args:
-        chain_id: The chain ID.
-        address: The contract address (0x-prefixed).
-        source: Primary source — ``"sourcify"`` or ``"etherscan"``.
-        etherscan_api_key: API key for Etherscan (required for Etherscan calls).
-
-    Returns:
-        The ABI as a pretty-printed JSON string.
-
-    Raises:
-        RuntimeError: If both sources fail.
-    """
-    if source == "sourcify":
-        primary_name, fallback_name = "Sourcify", "Etherscan"
-        primary_fn = lambda: fetch_abi_sourcify(chain_id, address)
-        fallback_fn = lambda: (
-            fetch_abi_etherscan(chain_id, address, etherscan_api_key)
-            if etherscan_api_key
-            else _skip_etherscan_no_key()
-        )
-    else:
-        primary_name, fallback_name = "Etherscan", "Sourcify"
-        if not etherscan_api_key:
-            logger.warning(
-                "ETHERSCAN_API_KEY not set, falling back to Sourcify"
-            )
-            result = fetch_abi_sourcify(chain_id, address)
-            if result is not None:
-                return result
-            raise RuntimeError(
-                f"Failed to fetch ABI for {address} on chain {chain_id}: "
-                f"ETHERSCAN_API_KEY not set and Sourcify failed"
-            )
-        primary_fn = lambda: fetch_abi_etherscan(chain_id, address, etherscan_api_key)
-        fallback_fn = lambda: fetch_abi_sourcify(chain_id, address)
-
-    result = primary_fn()
-    if result is not None:
-        return result
-
-    logger.warning(
-        f"{primary_name} failed for {address} on chain {chain_id}, "
-        f"trying {fallback_name}"
-    )
-
-    result = fallback_fn()
-    if result is not None:
-        return result
-
-    raise RuntimeError(
-        f"Failed to fetch ABI for {address} on chain {chain_id}: "
-        f"both {primary_name} and {fallback_name} failed"
-    )
-
-
-def _skip_etherscan_no_key() -> None:
-    """Log a warning that Etherscan is skipped due to missing API key."""
-    logger.warning("ETHERSCAN_API_KEY not set, skipping Etherscan fallback")
-    return None
