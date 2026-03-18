@@ -24,7 +24,7 @@ async def main():
         port=int(os.environ.get("CLICKHOUSE_PORT", "8123")),
         username=os.environ.get("CLICKHOUSE_USER", "default"),
         password=os.environ.get("CLICKHOUSE_PASSWORD", "default"),
-        database=os.environ.get("CLICKHOUSE_DATABASE", "default")
+        database=os.environ.get("CLICKHOUSE_DATABASE", "default"),
     )
 
     await client.command("DROP TABLE IF EXISTS polymarket_hourly_volume")

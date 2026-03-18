@@ -3,7 +3,7 @@
 #
 # This script ingests events from the Polymarket NegRiskCtfExchange contract on Polygon
 # and writes decoded event data to ClickHouse.
-# 
+#
 # The file is pre-configured with `from_block: 81053172` (2026-01-01 00:00:00) and `to_block: 81139570` (2026-01-02 23:59:59), 2 days worth of data. You can reduce the interval for a faster ingestion.
 #
 # Usage:
@@ -17,23 +17,44 @@ import asyncio
 from pathlib import Path
 
 from tiders import run_pipeline
-from tiders.config import ClickHouseWriterConfig, EvmDecodeEventsConfig, EvmTableAliases, HexEncodeConfig, JoinBlockDataConfig, Pipeline, Step, StepKind, Writer, WriterKind
+from tiders.config import (
+    ClickHouseWriterConfig,
+    EvmDecodeEventsConfig,
+    EvmTableAliases,
+    HexEncodeConfig,
+    JoinBlockDataConfig,
+    Pipeline,
+    Step,
+    StepKind,
+    Writer,
+    WriterKind,
+)
 from tiders_core.ingest import ProviderConfig, ProviderKind, Query, QueryKind
 from tiders_core.ingest import evm
 from tiders_core import evm_abi_events, evm_abi_functions
 
 
 # Contract: polymarket_NegRiskCtfExchange
-polymarket_NegRiskCtfExchange_abi_path = Path('/home/yulesa/repos/tiders/examples/polymarket_vol/polymarket_NegRiskCtfExchange.abi.json')
-polymarket_NegRiskCtfExchange_abi_json = polymarket_NegRiskCtfExchange_abi_path.read_text()
-polymarket_NegRiskCtfExchange_events = {ev.name: {'topic0': ev.topic0, 'signature': ev.signature} for ev in evm_abi_events(polymarket_NegRiskCtfExchange_abi_json)}
-polymarket_NegRiskCtfExchange_functions = {fn.name: {'selector': fn.selector, 'signature': fn.signature} for fn in evm_abi_functions(polymarket_NegRiskCtfExchange_abi_json)}
-polymarket_NegRiskCtfExchange_address = '0xc5d563a36ae78145c45a50134d48a1215220f80a'
+polymarket_NegRiskCtfExchange_abi_path = Path(
+    "/home/yulesa/repos/tiders/examples/polymarket_vol/polymarket_NegRiskCtfExchange.abi.json"
+)
+polymarket_NegRiskCtfExchange_abi_json = (
+    polymarket_NegRiskCtfExchange_abi_path.read_text()
+)
+polymarket_NegRiskCtfExchange_events = {
+    ev.name: {"topic0": ev.topic0, "signature": ev.signature}
+    for ev in evm_abi_events(polymarket_NegRiskCtfExchange_abi_json)
+}
+polymarket_NegRiskCtfExchange_functions = {
+    fn.name: {"selector": fn.selector, "signature": fn.signature}
+    for fn in evm_abi_functions(polymarket_NegRiskCtfExchange_abi_json)
+}
+polymarket_NegRiskCtfExchange_address = "0xc5d563a36ae78145c45a50134d48a1215220f80a"
 
 
 provider = ProviderConfig(
     kind=ProviderKind.SQD,
-    url='https://portal.sqd.dev/datasets/polygon-mainnet',
+    url="https://portal.sqd.dev/datasets/polygon-mainnet",
 )
 
 query = Query(
@@ -43,13 +64,13 @@ query = Query(
         to_block=81139570,
         logs=[
             evm.LogRequest(
-                address=['0xc5d563a36ae78145c45a50134d48a1215220f80a'],
+                address=["0xc5d563a36ae78145c45a50134d48a1215220f80a"],
                 topic0=[
-                    '0xd0a08e8c493f9c94f29311604c9de1b4e8c8d4c06bd0c789af57f2d65bfec0f6',
-                    '0x63bf4d16b7fa898ef4c4b2b6d90fd201e9c56313b65638af6088d149d2ce956c',
-                    '0xbc9a2432e8aeb48327246cddd6e872ef452812b4243c04e6bfb786a2cd8faf0d',
-                    '0x5152abf959f6564662358c2e52b702259b78bac5ee7842a0f01937e670efcc7d',
-                    '0xacffcc86834d0f1a64b0d5a675798deed6ff0bcfc2231edd3480e7288dba7ff4',
+                    "0xd0a08e8c493f9c94f29311604c9de1b4e8c8d4c06bd0c789af57f2d65bfec0f6",
+                    "0x63bf4d16b7fa898ef4c4b2b6d90fd201e9c56313b65638af6088d149d2ce956c",
+                    "0xbc9a2432e8aeb48327246cddd6e872ef452812b4243c04e6bfb786a2cd8faf0d",
+                    "0x5152abf959f6564662358c2e52b702259b78bac5ee7842a0f01937e670efcc7d",
+                    "0xacffcc86834d0f1a64b0d5a675798deed6ff0bcfc2231edd3480e7288dba7ff4",
                 ],
                 include_blocks=True,
             ),
@@ -81,61 +102,61 @@ steps = [
     Step(
         kind=StepKind.EVM_DECODE_EVENTS,
         config=EvmDecodeEventsConfig(
-            event_signature='OrderFilled(bytes32 indexed orderHash, address indexed maker, address indexed taker, uint256 makerAssetId, uint256 takerAssetId, uint256 makerAmountFilled, uint256 takerAmountFilled, uint256 fee)',
+            event_signature="OrderFilled(bytes32 indexed orderHash, address indexed maker, address indexed taker, uint256 makerAssetId, uint256 takerAssetId, uint256 makerAmountFilled, uint256 takerAmountFilled, uint256 fee)",
             allow_decode_fail=True,
             filter_by_topic0=True,
-            input_table='polymarket_negriskctfexchange_logs',
-            output_table='polymarket_negriskctfexchange_orderfilled',
+            input_table="polymarket_negriskctfexchange_logs",
+            output_table="polymarket_negriskctfexchange_orderfilled",
         ),
     ),
     Step(
         kind=StepKind.EVM_DECODE_EVENTS,
         config=EvmDecodeEventsConfig(
-            event_signature='OrdersMatched(bytes32 indexed takerOrderHash, address indexed takerOrderMaker, uint256 makerAssetId, uint256 takerAssetId, uint256 makerAmountFilled, uint256 takerAmountFilled)',
+            event_signature="OrdersMatched(bytes32 indexed takerOrderHash, address indexed takerOrderMaker, uint256 makerAssetId, uint256 takerAssetId, uint256 makerAmountFilled, uint256 takerAmountFilled)",
             allow_decode_fail=True,
             filter_by_topic0=True,
-            input_table='polymarket_negriskctfexchange_logs',
-            output_table='polymarket_negriskctfexchange_ordersmatched',
+            input_table="polymarket_negriskctfexchange_logs",
+            output_table="polymarket_negriskctfexchange_ordersmatched",
         ),
     ),
     Step(
         kind=StepKind.EVM_DECODE_EVENTS,
         config=EvmDecodeEventsConfig(
-            event_signature='TokenRegistered(uint256 indexed token0, uint256 indexed token1, bytes32 indexed conditionId)',
+            event_signature="TokenRegistered(uint256 indexed token0, uint256 indexed token1, bytes32 indexed conditionId)",
             allow_decode_fail=True,
             filter_by_topic0=True,
-            input_table='polymarket_negriskctfexchange_logs',
-            output_table='polymarket_negriskctfexchange_tokenregistered',
+            input_table="polymarket_negriskctfexchange_logs",
+            output_table="polymarket_negriskctfexchange_tokenregistered",
         ),
     ),
     Step(
         kind=StepKind.EVM_DECODE_EVENTS,
         config=EvmDecodeEventsConfig(
-            event_signature='OrderCancelled(bytes32 indexed orderHash)',
+            event_signature="OrderCancelled(bytes32 indexed orderHash)",
             allow_decode_fail=True,
             filter_by_topic0=True,
-            input_table='polymarket_negriskctfexchange_logs',
-            output_table='polymarket_negriskctfexchange_ordercancelled',
+            input_table="polymarket_negriskctfexchange_logs",
+            output_table="polymarket_negriskctfexchange_ordercancelled",
         ),
     ),
     Step(
         kind=StepKind.EVM_DECODE_EVENTS,
         config=EvmDecodeEventsConfig(
-            event_signature='FeeCharged(address indexed receiver, uint256 tokenId, uint256 amount)',
+            event_signature="FeeCharged(address indexed receiver, uint256 tokenId, uint256 amount)",
             allow_decode_fail=True,
             filter_by_topic0=True,
-            input_table='polymarket_negriskctfexchange_logs',
-            output_table='polymarket_negriskctfexchange_feecharged',
+            input_table="polymarket_negriskctfexchange_logs",
+            output_table="polymarket_negriskctfexchange_feecharged",
         ),
     ),
     Step(
         kind=StepKind.JOIN_BLOCK_DATA,
         config=JoinBlockDataConfig(
             tables=[
-                'polymarket_negriskctfexchange_orderfilled',
-                'polymarket_negriskctfexchange_ordersmatched',
-                'polymarket_negriskctfexchange_tokenregistered',
-                'polymarket_negriskctfexchange_ordercancelled',
+                "polymarket_negriskctfexchange_orderfilled",
+                "polymarket_negriskctfexchange_ordersmatched",
+                "polymarket_negriskctfexchange_tokenregistered",
+                "polymarket_negriskctfexchange_ordercancelled",
             ],
         ),
     ),
@@ -147,10 +168,10 @@ steps = [
 
 writer = Writer(
     kind=WriterKind.CLICKHOUSE,
-    config=ClickHouseWriterConfig(password='default'),
+    config=ClickHouseWriterConfig(password="default"),
 )
 
-table_aliases = EvmTableAliases(logs='polymarket_negriskctfexchange_logs')
+table_aliases = EvmTableAliases(logs="polymarket_negriskctfexchange_logs")
 
 pipeline = Pipeline(
     provider=provider,

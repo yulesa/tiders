@@ -153,6 +153,7 @@ class Writer(DataWriter):
 
     async def _check_table_exists(self, table_name: str) -> bool:
         """Return ``True`` if a table with the given name exists in the current database."""
+        assert self.client is not None
         res = await self.client.query(
             f"SELECT count() > 0 as table_exists FROM system.tables WHERE database = '{self.client.client.database}' AND name = '{table_name}'"
         )
@@ -161,6 +162,7 @@ class Writer(DataWriter):
 
     async def _create_table(self, table_name: str, schema: pa.Schema) -> None:
         """Issue a ``CREATE TABLE`` DDL statement followed by any skip-index definitions."""
+        assert self.client is not None
         columns = []
 
         for field in schema:
@@ -201,6 +203,7 @@ class Writer(DataWriter):
     async def push_data(self, data: Dict[str, pa.Table]) -> None:
         """Insert Arrow Tables into ClickHouse, creating tables on the first call if needed."""
         await self._ensure_client()
+        assert self.client is not None
         # create tables if this is the first insert
         if self.create_tables and self.first_insert:
             tasks = []

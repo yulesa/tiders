@@ -309,7 +309,9 @@ class PostgresqlWriterConfig:
     user: str = "postgres"
     password: str = "postgres"
     dbname: str = "postgres"
-    connection: Optional["psycopg.AsyncConnection[Any]"] = field(default=None, repr=False)
+    connection: Optional["psycopg.AsyncConnection[Any]"] = field(
+        default=None, repr=False
+    )
     schema: str = "public"
     anchor_table: Optional[str] = None
     create_tables: bool = True

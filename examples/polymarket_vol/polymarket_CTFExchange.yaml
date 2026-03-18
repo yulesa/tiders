@@ -14,9 +14,8 @@ project:
   repository: https://github.com/yulesa/tiders/example/
   
 provider:
-  kind:  sqd # hypersync
-  url: "https://portal.sqd.dev/datasets/polygon-mainnet" # ${PROVIDER_URL}
-  # bearer_token: ${HYPERSYNC_BEARER_TOKEN}
+  kind:  sqd
+  url: "https://portal.sqd.dev/datasets/polygon-mainnet"
   
 contracts:
   - name: polymarket_CTFExchange
