@@ -62,7 +62,17 @@ class Writer(DataWriter):
                 "DuckDB writer requires the duckdb package. "
                 "Install it with: pip install tiders[duckdb]"
             )
-        self.connection = config.connection
+        if config.connection is not None:
+            self.connection = config.connection
+        elif config.path is not None:
+            from pathlib import Path
+
+            Path(config.path).parent.mkdir(parents=True, exist_ok=True)
+            self.connection = duckdb.connect(database=config.path)
+        else:
+            raise ValueError(
+                "DuckdbWriterConfig requires either 'connection' or 'path'."
+            )
         self.first_push = True
         logger.warning(
             "DuckDB does not support Decimal256.\n"

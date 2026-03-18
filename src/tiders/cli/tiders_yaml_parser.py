@@ -181,6 +181,7 @@ def parse_tiders_yaml(
 
     provider_raw = raw_config.get("provider")
     query_raw = raw_config.get("query")
+    steps_raw = raw_config.get("steps", [])
 
     if provider_raw is None:
         raise YamlConfigError("Missing required 'provider' section in config.")
@@ -190,11 +191,12 @@ def parse_tiders_yaml(
     if contracts:
         provider_raw = resolve_contract_refs(provider_raw, contracts)
         query_raw = resolve_contract_refs(query_raw, contracts)
+        steps_raw = resolve_contract_refs(steps_raw, contracts)
 
     provider = parse_provider(dict(provider_raw))
     query = parse_query(dict(query_raw))
 
-    steps = parse_steps(raw_config.get("steps", []), yaml_dir)
+    steps = parse_steps(steps_raw, yaml_dir)
 
     if "writer" not in raw_config:
         raise YamlConfigError("Missing required 'writer' section in config.")
@@ -342,11 +344,15 @@ def parse_contracts(
                     events[ev.name] = {
                         "topic0": ev.topic0,
                         "signature": ev.signature,
+                        "name_snake_case": ev.name_snake_case,
+                        "selector_signature": ev.selector_signature,
                     }
                 for fn in evm_abi_functions(abi_json):
                     functions[fn.name] = {
                         "selector": fn.selector,
                         "signature": fn.signature,
+                        "name_snake_case": fn.name_snake_case,
+                        "selector_signature": fn.selector_signature,
                     }
             except Exception as e:
                 raise YamlConfigError(
@@ -1672,7 +1678,11 @@ def _parse_single_writer(writer_raw: dict[str, Any], path: str) -> Writer:
 
 
 def _parse_duckdb_writer(raw: dict[str, Any], path: str) -> DuckdbWriterConfig:
-    """Parse DuckDB writer config: ``{path: "data/my.duckdb"}``."""
+    """Parse DuckDB writer config: ``{path: "data/my.duckdb"}``.
+
+    Stores the plain path on the config.  The actual DuckDB connection is
+    created lazily by the writer at startup.
+    """
     valid_keys = {"path"}
     unknown = set(raw.keys()) - valid_keys
     if unknown:
@@ -1701,21 +1711,16 @@ def _parse_duckdb_writer(raw: dict[str, Any], path: str) -> DuckdbWriterConfig:
             "Install it with: pip install tiders[duckdb]",
             path,
         )
-    import duckdb
 
-    Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-    connection = duckdb.connect(database=db_path)
-    return DuckdbWriterConfig(connection=connection)
+    return DuckdbWriterConfig(path=db_path)
 
 
 def _parse_clickhouse_writer(raw: dict[str, Any], path: str) -> ClickHouseWriterConfig:
     """Parse ClickHouse writer config: ``{host, port, ...}``.
 
-    Creates an async ClickHouse client using ``clickhouse_connect``.
-    Uses ``asyncio`` to run the async client constructor.
+    Stores plain connection parameters on the config.  The actual async client
+    is created lazily by the writer at startup.
     """
-    import asyncio
-
     valid_keys = {
         "host",
         "port",
@@ -1749,20 +1754,15 @@ def _parse_clickhouse_writer(raw: dict[str, Any], path: str) -> ClickHouseWriter
             "Install it with: pip install tiders[clickhouse]",
             path,
         )
-    import clickhouse_connect
 
-    client = asyncio.get_event_loop().run_until_complete(
-        clickhouse_connect.get_async_client(
-            host=raw["host"],
-            port=int(raw.get("port", 8123)),
-            username=raw.get("username", "default"),
-            password=raw.get("password", ""),
-            database=raw.get("database", "default"),
-            secure=raw.get("secure", False),
-        )
-    )
-
-    config_kwargs: dict[str, Any] = {"client": client}
+    config_kwargs: dict[str, Any] = {
+        "host": raw["host"],
+        "port": int(raw.get("port", 8123)),
+        "username": raw.get("username", "default"),
+        "password": raw.get("password", ""),
+        "database": raw.get("database", "default"),
+        "secure": raw.get("secure", False),
+    }
     if "codec" in raw:
         config_kwargs["codec"] = raw["codec"]
     if "order_by" in raw:
@@ -1806,7 +1806,11 @@ def _parse_delta_lake_writer(raw: dict[str, Any], path: str) -> DeltaLakeWriterC
 
 
 def _parse_iceberg_writer(raw: dict[str, Any], path: str) -> IcebergWriterConfig:
-    """Parse Iceberg writer config: ``{namespace, catalog_type, ...}``."""
+    """Parse Iceberg writer config: ``{namespace, catalog_type, ...}``.
+
+    Stores plain catalog parameters on the config.  The actual pyiceberg
+    catalog is created lazily by the writer at startup.
+    """
     valid_keys = {
         "namespace",
         "catalog_uri",
@@ -1844,22 +1848,13 @@ def _parse_iceberg_writer(raw: dict[str, Any], path: str) -> IcebergWriterConfig
             "Install it with: pip install tiders[iceberg]",
             path,
         )
-    from pyiceberg.catalog import load_catalog
-
-    catalog_type = raw.get("catalog_type", "sql")
-    catalog = load_catalog(
-        "yaml_config",
-        type=catalog_type,
-        uri=raw["catalog_uri"],
-        warehouse=raw["warehouse"],
-    )
-
-    write_location = raw.get("write_location", raw["warehouse"])
 
     return IcebergWriterConfig(
         namespace=raw["namespace"],
-        catalog=catalog,
-        write_location=write_location,
+        catalog_uri=raw["catalog_uri"],
+        warehouse=raw["warehouse"],
+        catalog_type=raw.get("catalog_type", "sql"),
+        write_location=raw.get("write_location", raw["warehouse"]),
     )
 
 
@@ -1921,13 +1916,11 @@ def _parse_pyarrow_dataset_writer(
 
 
 def _parse_postgresql_writer(raw: dict[str, Any], path: str) -> PostgresqlWriterConfig:
-    """Parse PostgreSQL writer config and open an async connection.
+    """Parse PostgreSQL writer config.
 
-    Opens a ``psycopg.AsyncConnection`` from the provided connection parameters.
-    Uses ``asyncio`` to run the async connection constructor synchronously.
+    Stores plain connection parameters on the config.  The actual async
+    connection is created lazily by the writer at startup.
     """
-    import asyncio
-
     valid_keys = {
         "host",
         "port",
@@ -1955,22 +1948,14 @@ def _parse_postgresql_writer(raw: dict[str, Any], path: str) -> PostgresqlWriter
             "Install it with: pip install tiders[postgresql]",
             path,
         )
-    import psycopg
 
-    conninfo_parts = [
-        f"host={raw['host']}",
-        f"port={raw.get('port', 5432)}",
-        f"dbname={raw.get('dbname', 'postgres')}",
-        f"user={raw.get('user', 'postgres')}",
-        f"password={raw.get('password', 'postgres')}",
-    ]
-    conninfo = " ".join(conninfo_parts)
-
-    connection = asyncio.get_event_loop().run_until_complete(
-        psycopg.AsyncConnection.connect(conninfo, autocommit=False)
-    )
-
-    config_kwargs: dict[str, Any] = {"connection": connection}
+    config_kwargs: dict[str, Any] = {
+        "host": raw["host"],
+        "port": int(raw.get("port", 5432)),
+        "user": raw.get("user", "postgres"),
+        "password": raw.get("password", "postgres"),
+        "dbname": raw.get("dbname", "postgres"),
+    }
     if "schema" in raw:
         config_kwargs["schema"] = raw["schema"]
     if "anchor_table" in raw:

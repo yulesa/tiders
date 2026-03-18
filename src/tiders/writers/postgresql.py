@@ -134,11 +134,32 @@ class Writer(DataWriter):
     """
 
     def __init__(self, config: PostgresqlWriterConfig):
-        self.connection = config.connection
+        if config.connection is not None:
+            self.connection = config.connection
+        else:
+            self.connection = None
+            self._conninfo = " ".join(
+                [
+                    f"host={config.host}",
+                    f"port={config.port}",
+                    f"dbname={config.dbname}",
+                    f"user={config.user}",
+                    f"password={config.password}",
+                ]
+            )
         self.schema = config.schema
         self.anchor_table = config.anchor_table
         self.create_tables = config.create_tables
         self.first_insert = True
+
+    async def _ensure_connection(self):
+        """Create the async PostgreSQL connection if not already initialized."""
+        if self.connection is None:
+            import psycopg
+
+            self.connection = await psycopg.AsyncConnection.connect(
+                self._conninfo, autocommit=False
+            )
 
     async def _create_table_if_not_exists(
         self, table_name: str, schema: pa.Schema
@@ -159,6 +180,7 @@ class Writer(DataWriter):
         ddl = sql.SQL("CREATE TABLE IF NOT EXISTS {} (\n    {}\n)").format(
             qualified_id, col_defs
         )
+        assert self.connection is not None
         logger.debug(f"creating table with: {ddl.as_string(self.connection)}")
         async with self.connection.cursor() as cur:
             await cur.execute(ddl)
@@ -166,6 +188,7 @@ class Writer(DataWriter):
 
     async def _copy_table(self, table_name: str, table: pa.Table) -> None:
         """Stream Arrow table data into PostgreSQL via the COPY protocol."""
+        assert self.connection is not None
         qualified_id = sql.SQL("{}.{}").format(
             sql.Identifier(self.schema), sql.Identifier(table_name)
         )
@@ -207,6 +230,8 @@ class Writer(DataWriter):
 
     async def push_data(self, data: Dict[str, pa.Table]) -> None:
         """Insert Arrow Tables into PostgreSQL, creating tables on the first call if needed."""
+        await self._ensure_connection()
+        assert self.connection is not None
         if self.create_tables and self.first_insert:
             for table_name, table_data in data.items():
                 await self._create_table_if_not_exists(table_name, table_data.schema)

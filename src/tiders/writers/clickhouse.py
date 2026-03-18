@@ -115,7 +115,18 @@ class Writer(DataWriter):
     """
 
     def __init__(self, config: ClickHouseWriterConfig):
-        self.client = config.client
+        if config.client is not None:
+            self.client = config.client
+        else:
+            self.client = None
+            self._client_config = {
+                "host": config.host,
+                "port": config.port,
+                "username": config.username,
+                "password": config.password,
+                "database": config.database,
+                "secure": config.secure,
+            }
         self.order_by = config.order_by
         self.codec = config.codec
         self.skip_index = config.skip_index
@@ -123,6 +134,15 @@ class Writer(DataWriter):
         self.anchor_table = config.anchor_table
         self.engine = config.engine
         self.create_tables = config.create_tables
+
+    async def _ensure_client(self):
+        """Create the async ClickHouse client if not already initialized."""
+        if self.client is None:
+            import clickhouse_connect
+
+            self.client = await clickhouse_connect.get_async_client(
+                **self._client_config
+            )
 
     async def _create_table_if_not_exists(self, table_name: str, schema: pa.Schema):
         """Create a ClickHouse table from an Arrow schema if it does not already exist."""
@@ -133,6 +153,7 @@ class Writer(DataWriter):
 
     async def _check_table_exists(self, table_name: str) -> bool:
         """Return ``True`` if a table with the given name exists in the current database."""
+        assert self.client is not None
         res = await self.client.query(
             f"SELECT count() > 0 as table_exists FROM system.tables WHERE database = '{self.client.client.database}' AND name = '{table_name}'"
         )
@@ -141,6 +162,7 @@ class Writer(DataWriter):
 
     async def _create_table(self, table_name: str, schema: pa.Schema) -> None:
         """Issue a ``CREATE TABLE`` DDL statement followed by any skip-index definitions."""
+        assert self.client is not None
         columns = []
 
         for field in schema:
@@ -180,6 +202,8 @@ class Writer(DataWriter):
 
     async def push_data(self, data: Dict[str, pa.Table]) -> None:
         """Insert Arrow Tables into ClickHouse, creating tables on the first call if needed."""
+        await self._ensure_client()
+        assert self.client is not None
         # create tables if this is the first insert
         if self.create_tables and self.first_insert:
             tasks = []
