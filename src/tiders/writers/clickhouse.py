@@ -118,18 +118,15 @@ class Writer(DataWriter):
         if config.client is not None:
             self.client = config.client
         else:
-            import clickhouse_connect
-
-            self.client = asyncio.get_event_loop().run_until_complete(
-                clickhouse_connect.get_async_client(
-                    host=config.host,
-                    port=config.port,
-                    username=config.username,
-                    password=config.password,
-                    database=config.database,
-                    secure=config.secure,
-                )
-            )
+            self.client = None
+            self._client_config = {
+                "host": config.host,
+                "port": config.port,
+                "username": config.username,
+                "password": config.password,
+                "database": config.database,
+                "secure": config.secure,
+            }
         self.order_by = config.order_by
         self.codec = config.codec
         self.skip_index = config.skip_index
@@ -137,6 +134,15 @@ class Writer(DataWriter):
         self.anchor_table = config.anchor_table
         self.engine = config.engine
         self.create_tables = config.create_tables
+
+    async def _ensure_client(self):
+        """Create the async ClickHouse client if not already initialized."""
+        if self.client is None:
+            import clickhouse_connect
+
+            self.client = await clickhouse_connect.get_async_client(
+                **self._client_config
+            )
 
     async def _create_table_if_not_exists(self, table_name: str, schema: pa.Schema):
         """Create a ClickHouse table from an Arrow schema if it does not already exist."""
@@ -194,6 +200,7 @@ class Writer(DataWriter):
 
     async def push_data(self, data: Dict[str, pa.Table]) -> None:
         """Insert Arrow Tables into ClickHouse, creating tables on the first call if needed."""
+        await self._ensure_client()
         # create tables if this is the first insert
         if self.create_tables and self.first_insert:
             tasks = []

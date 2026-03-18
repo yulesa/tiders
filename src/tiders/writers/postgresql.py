@@ -137,23 +137,27 @@ class Writer(DataWriter):
         if config.connection is not None:
             self.connection = config.connection
         else:
-            import psycopg
-
-            conninfo_parts = [
+            self.connection = None
+            self._conninfo = " ".join([
                 f"host={config.host}",
                 f"port={config.port}",
                 f"dbname={config.dbname}",
                 f"user={config.user}",
                 f"password={config.password}",
-            ]
-            conninfo = " ".join(conninfo_parts)
-            self.connection = asyncio.get_event_loop().run_until_complete(
-                psycopg.AsyncConnection.connect(conninfo, autocommit=False)
-            )
+            ])
         self.schema = config.schema
         self.anchor_table = config.anchor_table
         self.create_tables = config.create_tables
         self.first_insert = True
+
+    async def _ensure_connection(self):
+        """Create the async PostgreSQL connection if not already initialized."""
+        if self.connection is None:
+            import psycopg
+
+            self.connection = await psycopg.AsyncConnection.connect(
+                self._conninfo, autocommit=False
+            )
 
     async def _create_table_if_not_exists(
         self, table_name: str, schema: pa.Schema
@@ -222,6 +226,7 @@ class Writer(DataWriter):
 
     async def push_data(self, data: Dict[str, pa.Table]) -> None:
         """Insert Arrow Tables into PostgreSQL, creating tables on the first call if needed."""
+        await self._ensure_connection()
         if self.create_tables and self.first_insert:
             for table_name, table_data in data.items():
                 await self._create_table_if_not_exists(table_name, table_data.schema)
