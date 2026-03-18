@@ -1,6 +1,8 @@
 # Polymarket negriskctfexchange pipeline — no-code YAML config
 #
 # Indexes the Polymarket Multiple-Choice Leading contract events.
+# 
+# The file is pre-configured with `from_block: 81053172` (2026-01-01 00:00:00) and `to_block: 81139570` (2026-01-02 23:59:59), 2 days worth of data. You can reduce the interval for a faster ingestion.
 #
 # Usage:
 #   cd examples/polymarket_vol
@@ -28,7 +30,7 @@ table_aliases:
 query:
   kind: evm
   from_block: 81053172
-  to_block: 81054172 #81054172 #81139570
+  to_block: 81139570
   logs:
     - address: polymarket_NegRiskCtfExchange.address
       topic0:
