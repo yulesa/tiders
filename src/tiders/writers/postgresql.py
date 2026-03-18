@@ -134,7 +134,22 @@ class Writer(DataWriter):
     """
 
     def __init__(self, config: PostgresqlWriterConfig):
-        self.connection = config.connection
+        if config.connection is not None:
+            self.connection = config.connection
+        else:
+            import psycopg
+
+            conninfo_parts = [
+                f"host={config.host}",
+                f"port={config.port}",
+                f"dbname={config.dbname}",
+                f"user={config.user}",
+                f"password={config.password}",
+            ]
+            conninfo = " ".join(conninfo_parts)
+            self.connection = asyncio.get_event_loop().run_until_complete(
+                psycopg.AsyncConnection.connect(conninfo, autocommit=False)
+            )
         self.schema = config.schema
         self.anchor_table = config.anchor_table
         self.create_tables = config.create_tables

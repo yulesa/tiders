@@ -78,15 +78,27 @@ class StepKind(str, Enum):
 class IcebergWriterConfig:
     """Configuration for the Apache Iceberg writer.
 
+    Catalog can be specified either by passing a pre-built ``catalog`` or by
+    providing plain parameters (``catalog_uri``, ``warehouse``, etc.).  When
+    both are given the ``catalog`` takes precedence.
+
     Attributes:
         namespace: The Iceberg namespace (database) to write tables into.
-        catalog: A ``pyiceberg`` catalog instance used to create and load tables.
         write_location: The storage URI where Iceberg data files are written.
+            Defaults to the ``warehouse`` value if not specified.
+        catalog_uri: URI for the Iceberg catalog (e.g. a SQL connection string).
+        warehouse: Warehouse location for the Iceberg catalog.
+        catalog_type: Catalog type (default ``"sql"``).
+        catalog: An optional pre-built ``pyiceberg`` catalog instance.  If
+            provided, the plain catalog parameters above are ignored.
     """
 
-    namespace: str
-    catalog: "IcebergCatalog"
-    write_location: str
+    namespace: str = ""
+    write_location: str = ""
+    catalog_uri: str = ""
+    warehouse: str = ""
+    catalog_type: str = "sql"
+    catalog: Optional["IcebergCatalog"] = field(default=None, repr=False)
 
 
 @dataclass
@@ -133,8 +145,20 @@ class ClickHouseSkipIndex:
 class ClickHouseWriterConfig:
     """Configuration for the ClickHouse writer.
 
+    Connection can be specified either by passing a pre-built ``client`` or by
+    providing plain connection parameters (``host``, ``port``, etc.).  When both
+    are given the ``client`` takes precedence.
+
     Attributes:
-        client: An async ClickHouse client (``clickhouse_connect``).
+        host: ClickHouse server hostname.
+        port: ClickHouse HTTP port (default ``8123``).
+        username: ClickHouse username (default ``"default"``).
+        password: ClickHouse password (default ``""``).
+        database: ClickHouse database name (default ``"default"``).
+        secure: Use HTTPS (default ``False``).
+        client: An optional pre-built async ClickHouse client
+            (``clickhouse_connect``).  If provided, the plain connection
+            parameters above are ignored.
         codec: Per-table, per-column compression codecs.
             ``{"table": {"column": "ZSTD(3)"}}``.
         order_by: Per-table ordering key columns.
@@ -147,7 +171,13 @@ class ClickHouseWriterConfig:
             the first insert using the Arrow schema.
     """
 
-    client: "ClickHouseClient"
+    host: str = "localhost"
+    port: int = 8123
+    username: str = "default"
+    password: str = ""
+    database: str = "default"
+    secure: bool = False
+    client: Optional["ClickHouseClient"] = field(default=None, repr=False)
     codec: Dict[str, Dict[str, str]] = field(default_factory=dict)
     order_by: Dict[str, List[str]] = field(default_factory=dict)
     engine: str = "MergeTree()"
@@ -228,17 +258,27 @@ class CsvWriterConfig:
 class DuckdbWriterConfig:
     """Configuration for the DuckDB writer.
 
+    Connection can be specified either by passing a pre-built ``connection`` or
+    by providing a ``path`` to the database file.  When both are given the
+    ``connection`` takes precedence.
+
     Attributes:
-        connection: An open DuckDB connection. Tables are created automatically
-            on the first push if they don't already exist.
+        path: Filesystem path to the DuckDB database file.
+        connection: An optional pre-built DuckDB connection.  If provided, the
+            ``path`` parameter is ignored.
     """
 
-    connection: "duckdb.DuckDBPyConnection"
+    path: Optional[str] = None
+    connection: Optional["duckdb.DuckDBPyConnection"] = field(default=None, repr=False)
 
 
 @dataclass
 class PostgresqlWriterConfig:
     """Configuration for the PostgreSQL writer.
+
+    Connection can be specified either by passing a pre-built ``connection`` or
+    by providing plain connection parameters (``host``, ``port``, etc.).  When
+    both are given the ``connection`` takes precedence.
 
     Inserts Arrow data into PostgreSQL using the COPY protocol via ``psycopg`` v3.
     Tables are created automatically on the first push using the Arrow schema.
@@ -249,7 +289,13 @@ class PostgresqlWriterConfig:
     full list of raw blockchain fields that require preprocessing.
 
     Attributes:
-        connection: An open ``psycopg.AsyncConnection`` instance.
+        host: PostgreSQL server hostname.
+        port: PostgreSQL port (default ``5432``).
+        user: PostgreSQL username (default ``"postgres"``).
+        password: PostgreSQL password (default ``"postgres"``).
+        dbname: PostgreSQL database name (default ``"postgres"``).
+        connection: An optional pre-built ``psycopg.AsyncConnection``.  If
+            provided, the plain connection parameters above are ignored.
         schema: The PostgreSQL schema (namespace) to write tables into.
             Defaults to ``"public"``.
         anchor_table: If set, this table is written last (after all others) to
@@ -258,7 +304,12 @@ class PostgresqlWriterConfig:
             ``CREATE TABLE IF NOT EXISTS`` on the first push using the Arrow schema.
     """
 
-    connection: "psycopg.AsyncConnection[Any]"
+    host: str = "localhost"
+    port: int = 5432
+    user: str = "postgres"
+    password: str = "postgres"
+    dbname: str = "postgres"
+    connection: Optional["psycopg.AsyncConnection[Any]"] = field(default=None, repr=False)
     schema: str = "public"
     anchor_table: Optional[str] = None
     create_tables: bool = True

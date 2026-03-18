@@ -24,8 +24,20 @@ class Writer(DataWriter):
     def __init__(self, config: IcebergWriterConfig):
         logger.debug("Initializing Iceberg writer...")
 
+        if config.catalog is not None:
+            catalog = config.catalog
+        else:
+            from pyiceberg.catalog import load_catalog
+
+            catalog = load_catalog(
+                "tiders",
+                type=config.catalog_type,
+                uri=config.catalog_uri,
+                warehouse=config.warehouse,
+            )
+
         try:
-            config.catalog.create_namespace(
+            catalog.create_namespace(
                 config.namespace,
             )
         except Exception as e:
@@ -35,8 +47,8 @@ class Writer(DataWriter):
 
         self.namespace = config.namespace
         self.first_write = True
-        self.write_location = config.write_location
-        self.catalog = config.catalog
+        self.write_location = config.write_location or config.warehouse
+        self.catalog = catalog
 
     async def write_table(self, table_name: str, arrow_table: pa.Table) -> None:
         """Append an Arrow Table to an existing Iceberg table."""

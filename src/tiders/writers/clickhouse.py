@@ -115,7 +115,21 @@ class Writer(DataWriter):
     """
 
     def __init__(self, config: ClickHouseWriterConfig):
-        self.client = config.client
+        if config.client is not None:
+            self.client = config.client
+        else:
+            import clickhouse_connect
+
+            self.client = asyncio.get_event_loop().run_until_complete(
+                clickhouse_connect.get_async_client(
+                    host=config.host,
+                    port=config.port,
+                    username=config.username,
+                    password=config.password,
+                    database=config.database,
+                    secure=config.secure,
+                )
+            )
         self.order_by = config.order_by
         self.codec = config.codec
         self.skip_index = config.skip_index
