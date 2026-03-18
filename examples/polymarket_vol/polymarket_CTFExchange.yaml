@@ -1,0 +1,110 @@
+# Polymarket negriskctfexchange pipeline — no-code YAML config
+#
+# Indexes the Polymarket Multiple-Choice Leading contract events.
+#
+# Usage:
+#   cd examples/polymarket_vol
+#   tiders start polymarket_CTFExchange.yaml
+
+project:
+  name: polymarket_CTFExchange
+  description: Indexes the Polymarket Multiple-Choice Leading contract events
+  repository: https://github.com/yulesa/tiders/example/
+  
+provider:
+  kind:  sqd # hypersync
+  url: "https://portal.sqd.dev/datasets/polygon-mainnet" # ${PROVIDER_URL}
+  # bearer_token: ${HYPERSYNC_BEARER_TOKEN}
+  
+contracts:
+  - name: polymarket_CTFExchange
+    address: 0x4bfb41d5b3570defd03c39a9a4d8de6bd8b8982e
+    abi: ./polymarket_CTFExchange.abi.json
+    chain_id: polygon
+
+table_aliases:
+  logs: polymarket_ctfexchange_logs
+
+query:
+  kind: evm
+  from_block: 81053172
+  to_block: 81054172 #81139570
+  logs:
+    - address: polymarket_CTFExchange.address
+      topic0:
+        - polymarket_CTFExchange.Events.OrderFilled.signature
+        - polymarket_CTFExchange.Events.OrdersMatched.signature
+        - polymarket_CTFExchange.Events.TokenRegistered.signature
+        - polymarket_CTFExchange.Events.OrderCancelled.signature
+        - polymarket_CTFExchange.Events.FeeCharged.signature
+        # - polymarket_CTFExchange.Events.NewOperator.signature
+        # - polymarket_CTFExchange.Events.NewAdmin.signature
+        # - polymarket_CTFExchange.Events.RemovedAdmin.signature
+        # - polymarket_CTFExchange.Events.RemovedOperator.signature
+      include_blocks: true
+  fields:
+    log: [log_index, transaction_index, transaction_hash, block_hash, block_number, address, data, topic0, topic1, topic2, topic3]
+    block: [number, hash, timestamp]
+
+steps:
+  - kind: evm_decode_events
+    config:
+      input_table: polymarket_ctfexchange_logs
+      event_signature: polymarket_CTFExchange.Events.OrderFilled.signature
+      output_table: polymarket_ctfexchange_orderfilled
+      allow_decode_fail: true
+      filter_by_topic0: true
+
+  - kind: evm_decode_events
+    config:
+      input_table: polymarket_ctfexchange_logs
+      event_signature: polymarket_CTFExchange.Events.OrdersMatched.signature
+      output_table: polymarket_ctfexchange_ordersmatched
+      allow_decode_fail: true
+      filter_by_topic0: true
+
+  - kind: evm_decode_events
+    config:
+      input_table: polymarket_ctfexchange_logs
+      event_signature: polymarket_CTFExchange.Events.TokenRegistered.signature
+      output_table: polymarket_ctfexchange_tokenregistered
+      allow_decode_fail: true
+      filter_by_topic0: true
+
+  - kind: evm_decode_events
+    config:
+      input_table: polymarket_ctfexchange_logs
+      event_signature: polymarket_CTFExchange.Events.OrderCancelled.signature
+      output_table: polymarket_ctfexchange_ordercancelled
+      allow_decode_fail: true
+      filter_by_topic0: true
+
+  - kind: evm_decode_events
+    config:
+      input_table: polymarket_ctfexchange_logs
+      event_signature: polymarket_CTFExchange.Events.FeeCharged.signature
+      output_table: polymarket_ctfexchange_feecharged
+      allow_decode_fail: true
+      filter_by_topic0: true
+
+  - kind: join_block_data
+    config:
+      tables: [
+        polymarket_ctfexchange_orderfilled,
+        polymarket_ctfexchange_ordersmatched,
+        polymarket_ctfexchange_tokenregistered,
+        polymarket_ctfexchange_ordercancelled,
+        # polymarket_ctfexchange_feearcharged
+      ]
+      block_table_name: blocks
+
+  - kind: hex_encode
+
+writer:
+  kind: clickhouse
+  config:
+    host: localhost
+    port: 8123
+    database: default
+    username: default
+    password: default
