@@ -181,6 +181,7 @@ def parse_tiders_yaml(
 
     provider_raw = raw_config.get("provider")
     query_raw = raw_config.get("query")
+    steps_raw = raw_config.get("steps", [])
 
     if provider_raw is None:
         raise YamlConfigError("Missing required 'provider' section in config.")
@@ -190,11 +191,12 @@ def parse_tiders_yaml(
     if contracts:
         provider_raw = resolve_contract_refs(provider_raw, contracts)
         query_raw = resolve_contract_refs(query_raw, contracts)
+        steps_raw = resolve_contract_refs(steps_raw, contracts)
 
     provider = parse_provider(dict(provider_raw))
     query = parse_query(dict(query_raw))
 
-    steps = parse_steps(raw_config.get("steps", []), yaml_dir)
+    steps = parse_steps(steps_raw, yaml_dir)
 
     if "writer" not in raw_config:
         raise YamlConfigError("Missing required 'writer' section in config.")
@@ -342,11 +344,15 @@ def parse_contracts(
                     events[ev.name] = {
                         "topic0": ev.topic0,
                         "signature": ev.signature,
+                        "name_snake_case": ev.name_snake_case,
+                        "selector_signature": ev.selector_signature,
                     }
                 for fn in evm_abi_functions(abi_json):
                     functions[fn.name] = {
                         "selector": fn.selector,
                         "signature": fn.signature,
+                        "name_snake_case": fn.name_snake_case,
+                        "selector_signature": fn.selector_signature,
                     }
             except Exception as e:
                 raise YamlConfigError(
