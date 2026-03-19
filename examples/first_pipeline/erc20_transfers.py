@@ -23,7 +23,16 @@ import asyncio
 from pathlib import Path
 
 from tiders import run_pipeline
-from tiders.config import DuckdbWriterConfig, EvmDecodeEventsConfig, HexEncodeConfig, Pipeline, Step, StepKind, Writer, WriterKind
+from tiders.config import (
+    DuckdbWriterConfig,
+    EvmDecodeEventsConfig,
+    HexEncodeConfig,
+    Pipeline,
+    Step,
+    StepKind,
+    Writer,
+    WriterKind,
+)
 from tiders_core.ingest import ProviderConfig, ProviderKind, Query, QueryKind
 from tiders_core.ingest import evm
 from tiders_core import evm_abi_events, evm_abi_functions
@@ -36,30 +45,34 @@ from tiders_core import evm_abi_events, evm_abi_functions
 # metadata. This is optional — you can hardcode signatures and topic0 hashes
 # instead — but using the ABI is less error-prone.
 
-erc20_address = '0xae78736Cd615f374D3085123A210448E74Fc6393'  # rETH token contract
+erc20_address = "0xae78736Cd615f374D3085123A210448E74Fc6393"  # rETH token contract
 
-erc20_abi_path = Path('/home/yulesa/repos/tiders/examples/first_pipeline/erc20.abi.json')
+erc20_abi_path = Path(
+    "/home/yulesa/repos/tiders/examples/first_pipeline/erc20.abi.json"
+)
 erc20_abi_json = erc20_abi_path.read_text()
 
 # Build a dict of events keyed by name, e.g. erc20_events["Transfer"]["topic0"]
 erc20_events = {
     ev.name: {
-        'topic0': ev.topic0,
-        'signature': ev.signature,
-        'name_snake_case': ev.name_snake_case,
-        'selector_signature': ev.selector_signature,
+        "topic0": ev.topic0,
+        "signature": ev.signature,
+        "name_snake_case": ev.name_snake_case,
+        "selector_signature": ev.selector_signature,
     }
-    for ev in evm_abi_events(erc20_abi_json)}
+    for ev in evm_abi_events(erc20_abi_json)
+}
 
 # Build a dict of functions keyed by name, e.g. erc20_functions["approve"]["selector"]
 erc20_functions = {
     fn.name: {
-        'selector': fn.selector,
-        'signature': fn.signature,
-        'name_snake_case': fn.name_snake_case,
-        'selector_signature': fn.selector_signature,
+        "selector": fn.selector,
+        "signature": fn.signature,
+        "name_snake_case": fn.name_snake_case,
+        "selector_signature": fn.selector_signature,
     }
-    for fn in evm_abi_functions(erc20_abi_json)}
+    for fn in evm_abi_functions(erc20_abi_json)
+}
 
 
 # ---------------------------------------------------------------------------
@@ -71,7 +84,7 @@ erc20_functions = {
 
 provider = ProviderConfig(
     kind=ProviderKind.RPC,
-    url='https://mainnet.gateway.tenderly.co',
+    url="https://mainnet.gateway.tenderly.co",
 )
 
 
@@ -126,9 +139,9 @@ steps = [
     Step(
         kind=StepKind.EVM_DECODE_EVENTS,
         config=EvmDecodeEventsConfig(
-            event_signature='Transfer(address indexed from, address indexed to, uint256 value)',
+            event_signature="Transfer(address indexed from, address indexed to, uint256 value)",
             allow_decode_fail=True,
-            output_table='transfers',
+            output_table="transfers",
             hstack=False,
         ),
     ),
@@ -148,7 +161,7 @@ steps = [
 
 writer = Writer(
     kind=WriterKind.DUCKDB,
-    config=DuckdbWriterConfig(path='data/transfers.duckdb'),
+    config=DuckdbWriterConfig(path="data/transfers.duckdb"),
 )
 
 
