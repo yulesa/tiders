@@ -1,12 +1,13 @@
 # Tiders is published to PyPI as tiders and tiders-core.
-# To install it, run: pip install tiders tiders-core
-# Or with uv: uv pip install tiders tiders-core
+# To install it, run: pip install tiders[duckdb]
+# Or with uv: uv pip install tiders[duckdb]
 
 # You can run this script with:
-# uv run examples/jup_swap/jup_swap.py --from_block 330447751 --to_block 330447751
+# uv run jup_swap.py --from_block 330447751 --to_block 330448751
 
 # After run, you can see the result in the database:
 # duckdb data/solana_swaps.db
+# SHOW TABLES;
 # SELECT * FROM jup_swaps_decoded_instructions LIMIT 3;
 # SELECT * FROM jup_swaps LIMIT 3;
 ################################################################################
@@ -65,8 +66,6 @@ async def main(
     from_block: int,
     to_block: Optional[int],
 ):
-    # Ensure to_block is not None, use from_block + 100 as default if it is
-    actual_to_block = to_block if to_block is not None else from_block + 10
 
     # Defining a Provider
     provider = ProviderConfig(
@@ -79,7 +78,7 @@ async def main(
         kind=QueryKind.SVM,
         params=Query(
             from_block=from_block,  # Required: Starting block number
-            to_block=actual_to_block,  # Optional: Ending block number
+            to_block=to_block,  # Optional: Ending block number
             include_all_blocks=True,  # Optional: Weather to include blocks with no matches in the tables request
             fields=Fields(  # Required: Which fields (columns) to return on each table
                 instruction=InstructionFields(
@@ -194,8 +193,8 @@ async def main(
 
     # Post-pipeline Analytics
     connection.sql("""
-        CREATE OR REPLACE TABLE solana_amm AS SELECT * FROM read_csv('examples/jup_swap/solana_amm.csv');
-        CREATE OR REPLACE TABLE solana_tokens AS SELECT * FROM read_csv('examples/jup_swap/solana_tokens.csv');
+        CREATE OR REPLACE TABLE solana_amm AS SELECT * FROM read_csv('./solana_amm.csv');
+        CREATE OR REPLACE TABLE solana_tokens AS SELECT * FROM read_csv('./solana_tokens.csv');
         CREATE OR REPLACE TABLE jup_swaps AS            
             SELECT
                 di.amm AS amm,
@@ -236,18 +235,19 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Instructions tracker")
     parser.add_argument(
         "--from_block",
-        required=True,
+        default=330447751,
+        type=int,
         help="Specify the block to start from",
     )
     parser.add_argument(
         "--to_block",
-        required=False,
-        help="Specify the block to stop at, inclusive",
+        default=330448751,
+        help="Specify the block to stop at, inclusive. Pass 'None' for no upper bound.",
     )
 
     args = parser.parse_args()
 
-    from_block = int(args.from_block)
-    to_block = int(args.to_block) if args.to_block is not None else None
+    from_block = args.from_block
+    to_block = None if str(args.to_block) == "None" else int(args.to_block)
 
     asyncio.run(main(from_block, to_block))
