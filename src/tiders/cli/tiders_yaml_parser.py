@@ -189,7 +189,6 @@ def parse_tiders_yaml(
         raise YamlConfigError("Missing required 'query' section in config.")
 
     if contracts:
-        provider_raw = resolve_contract_refs(provider_raw, contracts)
         query_raw = resolve_contract_refs(query_raw, contracts)
         steps_raw = resolve_contract_refs(steps_raw, contracts)
 
@@ -402,6 +401,13 @@ def _resolve_ref(value: str, contracts: dict[str, ContractInfo]) -> str:
     if len(parts) == 4:
         category, item_name, prop = parts[1], parts[2], parts[3]
         if category == "Events":
+            if not contract.events:
+                raise YamlConfigError(
+                    f"Contract '{contract.name}' references events but no ABI file "
+                    f"was provided. Add an 'abi' path to the contract definition to "
+                    f"use event references.",
+                    value,
+                )
             if item_name not in contract.events:
                 raise YamlConfigError(
                     f"Event '{item_name}' not found in contract '{contract.name}'. "
@@ -416,6 +422,13 @@ def _resolve_ref(value: str, contracts: dict[str, ContractInfo]) -> str:
                 )
             return contract.events[item_name][prop]
         if category == "Functions":
+            if not contract.functions:
+                raise YamlConfigError(
+                    f"Contract '{contract.name}' references functions but no ABI file "
+                    f"was provided. Add an 'abi' path to the contract definition to "
+                    f"use function references.",
+                    value,
+                )
             if item_name not in contract.functions:
                 raise YamlConfigError(
                     f"Function '{item_name}' not found in contract '{contract.name}'. "

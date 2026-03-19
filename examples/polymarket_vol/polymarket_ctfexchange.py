@@ -35,19 +35,29 @@ from tiders_core import evm_abi_events, evm_abi_functions
 
 
 # Contract: polymarket_CTFExchange
+polymarket_CTFExchange_address = "0x4bfb41d5b3570defd03c39a9a4d8de6bd8b8982e"
 polymarket_CTFExchange_abi_path = Path(
     "/home/yulesa/repos/tiders/examples/polymarket_vol/polymarket_CTFExchange.abi.json"
 )
 polymarket_CTFExchange_abi_json = polymarket_CTFExchange_abi_path.read_text()
 polymarket_CTFExchange_events = {
-    ev.name: {"topic0": ev.topic0, "signature": ev.signature}
+    ev.name: {
+        "topic0": ev.topic0,
+        "signature": ev.signature,
+        "name_snake_case": ev.name_snake_case,
+        "selector_signature": ev.selector_signature,
+    }
     for ev in evm_abi_events(polymarket_CTFExchange_abi_json)
 }
 polymarket_CTFExchange_functions = {
-    fn.name: {"selector": fn.selector, "signature": fn.signature}
+    fn.name: {
+        "selector": fn.selector,
+        "signature": fn.signature,
+        "name_snake_case": fn.name_snake_case,
+        "selector_signature": fn.selector_signature,
+    }
     for fn in evm_abi_functions(polymarket_CTFExchange_abi_json)
 }
-polymarket_CTFExchange_address = "0x4bfb41d5b3570defd03c39a9a4d8de6bd8b8982e"
 
 
 provider = ProviderConfig(
