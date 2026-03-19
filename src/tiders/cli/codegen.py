@@ -396,27 +396,38 @@ def _contracts_to_code(contracts: dict[str, Any]) -> list[str]:
     lines: list[str] = []
 
     for name, contract in contracts.items():
+        lines.append(f"# Contract: {name}")
+
+        if contract.address:
+            lines.append(f"{name}_address = {repr(contract.address)}")
+
         if contract.abi_path:
-            lines.append(f"# Contract: {name}")
             lines.append(f"{name}_abi_path = Path({repr(contract.abi_path)})")
             lines.append(f"{name}_abi_json = {name}_abi_path.read_text()")
             lines.append(
-                f"{name}_events = {{"
-                f"ev.name: {{'topic0': ev.topic0, 'signature': ev.signature}} "
-                f"for ev in evm_abi_events({name}_abi_json)}}"
+                f"{name}_events = {{\n"
+                f"    ev.name: {{\n"
+                f"        'topic0': ev.topic0,\n"
+                f"        'signature': ev.signature,\n"
+                f"        'name_snake_case': ev.name_snake_case,\n"
+                f"        'selector_signature': ev.selector_signature,\n"
+                f"    }}\n"
+                f"    for ev in evm_abi_events({name}_abi_json)}}"
             )
             lines.append(
-                f"{name}_functions = {{"
-                f"fn.name: {{'selector': fn.selector, 'signature': fn.signature}} "
-                f"for fn in evm_abi_functions({name}_abi_json)}}"
+                f"{name}_functions = {{\n"
+                f"    fn.name: {{\n"
+                f"        'selector': fn.selector,\n"
+                f"        'signature': fn.signature,\n"
+                f"        'name_snake_case': fn.name_snake_case,\n"
+                f"        'selector_signature': fn.selector_signature,\n"
+                f"    }}\n"
+                f"    for fn in evm_abi_functions({name}_abi_json)}}"
             )
         else:
             lines.append(f"# Contract: {name}")
             lines.append(f"{name}_events = {repr(contract.events)}")
             lines.append(f"{name}_functions = {repr(contract.functions)}")
-
-        if contract.address:
-            lines.append(f"{name}_address = {repr(contract.address)}")
 
         lines.append("")
 

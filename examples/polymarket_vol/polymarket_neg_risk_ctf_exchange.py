@@ -35,6 +35,7 @@ from tiders_core import evm_abi_events, evm_abi_functions
 
 
 # Contract: polymarket_NegRiskCtfExchange
+polymarket_NegRiskCtfExchange_address = "0xc5d563a36ae78145c45a50134d48a1215220f80a"
 polymarket_NegRiskCtfExchange_abi_path = Path(
     "/home/yulesa/repos/tiders/examples/polymarket_vol/polymarket_NegRiskCtfExchange.abi.json"
 )
@@ -42,14 +43,23 @@ polymarket_NegRiskCtfExchange_abi_json = (
     polymarket_NegRiskCtfExchange_abi_path.read_text()
 )
 polymarket_NegRiskCtfExchange_events = {
-    ev.name: {"topic0": ev.topic0, "signature": ev.signature}
+    ev.name: {
+        "topic0": ev.topic0,
+        "signature": ev.signature,
+        "name_snake_case": ev.name_snake_case,
+        "selector_signature": ev.selector_signature,
+    }
     for ev in evm_abi_events(polymarket_NegRiskCtfExchange_abi_json)
 }
 polymarket_NegRiskCtfExchange_functions = {
-    fn.name: {"selector": fn.selector, "signature": fn.signature}
+    fn.name: {
+        "selector": fn.selector,
+        "signature": fn.signature,
+        "name_snake_case": fn.name_snake_case,
+        "selector_signature": fn.selector_signature,
+    }
     for fn in evm_abi_functions(polymarket_NegRiskCtfExchange_abi_json)
 }
-polymarket_NegRiskCtfExchange_address = "0xc5d563a36ae78145c45a50134d48a1215220f80a"
 
 
 provider = ProviderConfig(

@@ -1,0 +1,101 @@
+# ERC-20 Transfer Tiders YAML
+# ================================
+# This YAML defines a pipeline to fetch ERC-20 Transfer events from Ethereum and writes them to DuckDB.
+#
+# A tiders pipeline has 5 parts:
+#   1. Contract  — (optional) load ABI to get event/function signatures and selectors
+#   2. Provider  — where to fetch blockchain data from (RPC, HyperSync, SQD)
+#   3. Query     — what data to fetch (block range, event filters, fields)
+#   4. Steps     — transformations to apply (decode events, encode hex, etc.)
+#   5. Writer    — where to store the results (DuckDB, ClickHouse, Parquet, etc.)
+#
+# Usage:
+#   cd examples/first_pipeline
+#   tiders abi # download the ABI for the ERC-20 contract and save it as erc20.abi.json
+#   tiders start
+#
+# Verify the output by querying the DuckDB file using duckdb-cli:
+#   duckdb data/transfers.duckdb
+#   SHOW TABLES;
+#   SELECT * FROM transfers;
+
+project:
+  name: erc20_transfers
+  description: Fetch ERC-20 Transfer events and write to DuckDB.
+
+# ---------------------------------------------------------------------------
+# 1. Provider
+# ---------------------------------------------------------------------------
+# The provider defines where blockchain data is fetched from.
+# Options: ProviderKind.RPC, ProviderKind.HYPERSYNC, ProviderKind.SQD
+# RPC works with any standard Ethereum JSON-RPC endpoint.
+
+provider:
+  kind: rpc
+  url: "https://mainnet.gateway.tenderly.co" # or change to read from the .env file ${PROVIDER_URL}
+
+# ---------------------------------------------------------------------------
+# 2. Contract (optional, but very useful)
+# ---------------------------------------------------------------------------
+# Load the contract's ABI JSON file and parse it to extract event and function
+# metadata. This is optional — you can hardcode signatures and topic0 hashes
+# instead — but using the ABI is less error-prone.
+
+contracts:
+  - name: erc20
+    address: "0xae78736Cd615f374D3085123A210448E74Fc6393" # rETH contract, we need a erc20 reference to download the ABI.
+    # An abi: ./erc20.abi.json config will be added after using CLI command `tiders abi` in this folder
+
+# ---------------------------------------------------------------------------
+# 3. Query
+# ---------------------------------------------------------------------------
+# The query defines what data to fetch: block range, filters, and fields.
+#
+# - from_block / to_block: the block range to scan (100 blocks here for a quick test)
+# - transactions/logs/traces: what to fetch. Filtering logs with topic0 equal to the ERC-20 Transfer event topic0 (so any ERC-20 transfer, not just rETH)
+# - fields: which columns to include in the output. Set each desired field to True.
+
+query:
+  kind: evm
+  from_block: 18000000
+  to_block: 18000100
+  logs:
+    - topic0: erc20.Events.Transfer.topic0
+  fields:
+    log: [address, topic0, topic1, topic2, topic3, data, block_number, transaction_hash, log_index]
+
+# ---------------------------------------------------------------------------
+# 4. Steps
+# ---------------------------------------------------------------------------
+# Steps are transformations applied to the raw data before writing.
+# They run in order, each step's output feeding into the next.
+#
+# STEP 1: EVM_DECODE_EVENTS: decodes the raw log data (topic1..3 + data) into named
+#   columns using the event signature.
+#   - allow_decode_fail: if True, rows that fail to decode are kept (with nulls)
+#   - hstack: if False, outputs only decoded columns; if True, append them to
+#     the original raw log columns
+#
+# STEP 2: HEX_ENCODE: converts binary columns (addresses, hashes) to hex strings,
+#   making them human-readable and compatible with databases like DuckDB.
+
+steps:
+  - kind: evm_decode_events
+    config:
+      event_signature: erc20.Events.Transfer.signature
+      output_table: transfers
+      allow_decode_fail: true
+      hstack: false
+  - kind: hex_encode
+
+# ---------------------------------------------------------------------------
+# 5. Writer
+# ---------------------------------------------------------------------------
+# The writer defines where transformed data is stored.
+# DuckDB creates a local database file. Other options include ClickHouse,
+# Delta Lake, Iceberg, PostgreSQL, PyArrow Dataset (Parquet), and CSV.
+
+writer:
+  kind: duckdb
+  config:
+    path: data/transfers.duckdb
