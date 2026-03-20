@@ -98,9 +98,19 @@ Whether local or a production-grade data lake, Tiders handles the schema mapping
 | **Parquet** | File | Columnar file format, efficient for analytical workloads |
 | **CSV** | File | Plain-text format, widely compatible and easy to inspect |
 
-## Usage examples
+## Examples
 
-- [Examples](examples)
+| Example | Chain | Provider | Decoding | Writer |
+|---|---|---|---|---|
+| [rETH Transfer (no code)](examples/reth_transfer) | Ethereum (EVM) | HyperSync | EVM event decode | Parquet |
+| [Jupiter Swaps](examples/jup_swaps) | Solana (SVM) | SQD | SVM instruction decode | DuckDB |
+| [Uniswap V3](examples/uniswap_v3) | Ethereum (EVM) | HyperSync / SQD / RPC | EVM event decode (factory + children) | DuckDB / Parquet / Delta Lake / ClickHouse / Iceberg |
+
+- **rETH Transfer** — Simplest starting point. Uses a YAML config with no Python code to index a single event from a single contract.
+- **Jupiter Swaps** — Uses the Python SDK on Solana. Shows instruction decoding and custom Polars steps.
+- **Uniswap V3** — Demonstrates the factory + children two-stage indexing pattern, chaining two pipelines where the first discovers contracts and the second indexes their events.
+
+Browse all examples in the [examples/](examples) directory.
 
 ## Logging
 

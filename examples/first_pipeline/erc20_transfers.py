@@ -42,8 +42,7 @@ from tiders_core import evm_abi_events, evm_abi_functions
 # 1. Contract (optional, but very useful)
 # ---------------------------------------------------------------------------
 # Load the contract's ABI JSON file and parse it to extract event and function
-# metadata. This is optional — you can hardcode signatures and topic0 hashes
-# instead — but using the ABI is less error-prone.
+# metadata.
 
 erc20_address = "0xae78736Cd615f374D3085123A210448E74Fc6393"  # rETH token contract
 
@@ -94,7 +93,8 @@ provider = ProviderConfig(
 # The query defines what data to fetch: block range, filters, and fields.
 #
 # - from_block / to_block: the block range to scan (100 blocks here for a quick test)
-# - transactions/logs/traces: what to fetch. Filtering logs with topic0 equal to the ERC-20 Transfer event topic0 (so any ERC-20 transfer, not just rETH)
+# - transactions/logs/traces: what to fetch. Filtering logs with topic0 equal to the
+#   ERC-20 Transfer event topic0 (so any ERC-20 transfer, not just rETH)
 # - fields: which columns to include in the output. Set each desired field to True.
 
 query = Query(
@@ -139,7 +139,7 @@ steps = [
     Step(
         kind=StepKind.EVM_DECODE_EVENTS,
         config=EvmDecodeEventsConfig(
-            event_signature="Transfer(address indexed from, address indexed to, uint256 value)",
+            event_signature=erc20_events["Transfer"]["signature"],
             allow_decode_fail=True,
             output_table="transfers",
             hstack=False,
