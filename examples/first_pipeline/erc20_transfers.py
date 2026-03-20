@@ -93,7 +93,7 @@ provider = ProviderConfig(
 # The query defines what data to fetch: block range, filters, and fields.
 #
 # - from_block / to_block: the block range to scan (100 blocks here for a quick test)
-# - transactions/logs/traces: what to fetch. Filtering logs with topic0 equal to the 
+# - transactions/logs/traces: what to fetch. Filtering logs with topic0 equal to the
 #   ERC-20 Transfer event topic0 (so any ERC-20 transfer, not just rETH)
 # - fields: which columns to include in the output. Set each desired field to True.
 

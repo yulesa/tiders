@@ -37,7 +37,7 @@
 #
 # Output is written to data/uniswap_v3/
 #
-# Note: This example is more complex than a real pipeline would be. It would be better to have 2 separate 
+# Note: This example is more complex than a real pipeline would be. It would be better to have 2 separate
 # pipelines and an orchestration layer to run them sequentially, Also, it
 # lets you choose the provider and database backend from the CLI. In practice,
 # you would just hardcode the provider and writer you need — no argparse, no
@@ -243,7 +243,7 @@ async def run_pool_created_pipeline(
     rpc_url: Optional[str],
     database: str,
 ):
-    
+
     provider = create_provider(provider_kind, rpc_url)
 
     query = ingest.Query(
