@@ -1,5 +1,5 @@
 # =============================================================================
-# Uniswap V3 Two-Stage Indexing Example
+# Uniswap V3 Two-Stage Factory pattern
 # =============================================================================
 #
 # This example demonstrates the "factory + children" indexing pattern, one of
@@ -31,25 +31,14 @@
 #
 # Usage:
 #
-#   uv run uniswap_v3.py \
-#       --provider <hypersync|sqd|rpc> \
-#       --from_block 12369621 \
-#       --to_block 12370621 \
+#   uv run uniswap_v3.py --provider <hypersync|sqd|rpc> --from_block 12369621 --to_block 12370621
 #       [--rpc_url URL]    \  # only needed with --provider rpc
 #       [--database BACKEND]  # default: pyarrow. Options: pyarrow, duckdb, delta_lake, clickhouse, iceberg
 #
-#   --provider    Choose a data source. HyperSync and SQD are specialized
-#                 blockchain data APIs that are faster than a standard RPC node.
-#                 Use "rpc" with any Ethereum JSON-RPC endpoint.
-#   --from_block  First block to index (12369621 is near the Uniswap V3 deploy).
-#   --to_block    Last block to index (inclusive). Omit to stream to chain tip.
-#   --database    Storage backend for the output. Defaults to Parquet files via
-#                 PyArrow. Try "duckdb" for an embedded SQL database you can
-#                 query right away.
-#
 # Output is written to data/uniswap_v3/
 #
-# Note: This example is more complex than a real pipeline would be because it
+# Note: This example is more complex than a real pipeline would be. It would be better to have 2 separate 
+# pipelines and an orchestration layer to run them sequentially, Also, it
 # lets you choose the provider and database backend from the CLI. In practice,
 # you would just hardcode the provider and writer you need — no argparse, no
 # provider_url() helper, no create_writer() factory, no CLI. Those parts exist here
@@ -80,12 +69,12 @@ from tiders_core import evm_abi_events, ingest  # noqa: E402
 UNISWAP_V3_FACTORY = "0x1f98431c8ad98523631ae4a59f267346ea31f984"
 
 # Default provider URLs for each data source.
-DEFAULT_HYPERSYNC_URL = "https://eth.hypersync.xyz"
+DEFAULT_HYPERSYNC_URL = "https://eth.hypersync.xyz/"
 DEFAULT_SQD_URL = "https://portal.sqd.dev/datasets/ethereum-mainnet"
 DEFAULT_RPC_URL = "https://mainnet.gateway.tenderly.co"
 
 # Output directory for all pipeline results.
-DATA_PATH = str(Path.cwd() / "data" / "uniswap_v3")
+DATA_PATH = str(Path.cwd() / "data")
 Path(DATA_PATH).mkdir(parents=True, exist_ok=True)
 
 WRITER_CHOICES = ["clickhouse", "delta_lake", "duckdb", "iceberg", "pyarrow"]
@@ -132,17 +121,34 @@ pool_events = {
 # =============================================================================
 
 
-def provider_url(
-    provider: ingest.ProviderKind, rpc_url: Optional[str]
-) -> Optional[str]:
-    """Return the appropriate URL for a given provider kind."""
-    if provider == ingest.ProviderKind.HYPERSYNC:
-        return DEFAULT_HYPERSYNC_URL
-    if provider == ingest.ProviderKind.SQD:
-        return DEFAULT_SQD_URL
-    if provider == ingest.ProviderKind.RPC:
-        return rpc_url or os.environ.get("RPC_URL", DEFAULT_RPC_URL)
-    return rpc_url or os.environ.get("RPC_URL")
+def create_provider(
+    kind: ingest.ProviderKind, rpc_url: Optional[str]
+) -> ingest.ProviderConfig:
+    """Build a ProviderConfig for the given provider kind."""
+    # `stop_on_head=True` means the pipeline will stop once it reaches the chain tip.
+    if kind == ingest.ProviderKind.HYPERSYNC:
+        # HyperSync requires a bearer token for authentication.
+        return ingest.ProviderConfig(
+            kind=kind,
+            url=DEFAULT_HYPERSYNC_URL,
+            bearer_token=os.environ.get("BEARER_TOKEN"),
+            stop_on_head=True,
+        )
+    if kind == ingest.ProviderKind.SQD:
+        return ingest.ProviderConfig(
+            kind=kind,
+            url=DEFAULT_SQD_URL,
+            bearer_token=os.environ.get("BEARER_TOKEN"),
+            stop_on_head=True,
+        )
+    # RPC or any other provider.
+    url = rpc_url or os.environ.get("RPC_URL", DEFAULT_RPC_URL)
+    return ingest.ProviderConfig(
+        kind=kind,
+        url=url,
+        bearer_token=os.environ.get("BEARER_TOKEN"),
+        stop_on_head=True,
+    )
 
 
 # =============================================================================
@@ -237,20 +243,9 @@ async def run_pool_created_pipeline(
     rpc_url: Optional[str],
     database: str,
 ):
-    url = provider_url(provider_kind, rpc_url)
+    
+    provider = create_provider(provider_kind, rpc_url)
 
-    # --- Component 1: Provider ---
-    # Configures the data source. `stop_on_head=True` means the pipeline will
-    # stop once it reaches the chain tip (as opposed to streaming new blocks).
-    provider = ingest.ProviderConfig(
-        kind=provider_kind,
-        url=url,
-        stop_on_head=True,
-    )
-
-    # --- Component 2: Query ---
-    # Defines what data to fetch. Here we request logs from a specific contract
-    # address, filtered by the PoolCreated topic0 hash.
     query = ingest.Query(
         kind=ingest.QueryKind.EVM,
         params=ingest.evm.Query(
@@ -378,7 +373,7 @@ def _pool_event_steps() -> list[cc.Step]:
     # output table (e.g., "uniswap_v3_pool_swap", "uniswap_v3_pool_mint").
     # `filter_by_topic0=True` ensures only matching logs are decoded.
     # `allow_decode_fail=True` skips logs that don't match the expected format.
-    for event in pool_events.items():
+    for _, event in pool_events.items():
         output_table = f"uniswap_v3_pool_{event['name_snake_case']}"
         steps.append(
             cc.Step(
@@ -426,12 +421,7 @@ async def run_pool_events_pipeline(
     database: str,
     pool_addresses: list[str],
 ):
-    url = provider_url(provider_kind, rpc_url)
-    provider = ingest.ProviderConfig(
-        kind=provider_kind,
-        url=url,
-        stop_on_head=True,
-    )
+    provider = create_provider(provider_kind, rpc_url)
 
     writer = await create_writer(database)
 
@@ -554,7 +544,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--database",
         choices=WRITER_CHOICES,
-        default="pyarrow",
+        default="duckdb",
         help="Database backend to use for the writer",
     )
 
