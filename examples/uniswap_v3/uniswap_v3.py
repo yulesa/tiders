@@ -33,7 +33,7 @@
 #
 #   uv run uniswap_v3.py --provider <hypersync|sqd|rpc> --from_block 12369621 --to_block 12370621
 #       [--rpc_url URL]    \  # only needed with --provider rpc
-#       [--database BACKEND]  # default: pyarrow. Options: pyarrow, duckdb, delta_lake, clickhouse, iceberg
+#       [--database BACKEND]  # default: pyarrow. Options: pyarrow, duckdb, delta_lake, clickhouse, iceberg, postgresql
 #
 # Output is written to data/uniswap_v3/
 #
@@ -77,7 +77,7 @@ DEFAULT_RPC_URL = "https://mainnet.gateway.tenderly.co"
 DATA_PATH = str(Path.cwd() / "data")
 Path(DATA_PATH).mkdir(parents=True, exist_ok=True)
 
-WRITER_CHOICES = ["clickhouse", "delta_lake", "duckdb", "iceberg", "pyarrow"]
+WRITER_CHOICES = ["clickhouse", "delta_lake", "duckdb", "iceberg", "pyarrow", "postgresql"]
 
 # Table name aliases
 POOL_CREATED_LOGS_TABLE = "uniswap_v3_factory_pool_created_logs"
@@ -198,6 +198,31 @@ async def create_writer(database: str) -> cc.Writer:
         return cc.Writer(
             kind=cc.WriterKind.CLICKHOUSE,
             config=cc.ClickHouseWriterConfig(client=client),
+        )
+    
+    if database == "postgresql":
+        import psycopg
+
+        host = os.environ.get("POSTGRES_HOST", "localhost")
+        port = int(os.environ.get("POSTGRES_PORT", "5432"))
+        user = os.environ.get("POSTGRES_USER", "postgres")
+        password = os.environ.get("POSTGRES_PASSWORD", "secret")
+        dbname = os.environ.get("POSTGRES_DB", "tiders")
+        
+        _conninfo = " ".join(
+                [
+                    f"host={host}",
+                    f"port={port}",
+                    f"dbname={dbname}",
+                    f"user={user}",
+                    f"password={password}",
+                ]
+            )
+        connection = await psycopg.AsyncConnection.connect(_conninfo, autocommit=False)
+        
+        return cc.Writer(
+            kind=cc.WriterKind.POSTGRESQL,
+            config=cc.PostgresqlWriterConfig(connection=connection),
         )
 
     if database == "iceberg":
@@ -350,8 +375,52 @@ async def load_pool_addresses(database: str) -> list[str]:
         addresses = {value.as_py() for value in table["pool"] if value.as_py()}
         return sorted(addresses)
 
+    if database == "clickhouse":
+        import clickhouse_connect
+
+        client = await clickhouse_connect.get_async_client(
+            host=os.environ.get("CLICKHOUSE_HOST", "localhost"),
+            port=int(os.environ.get("CLICKHOUSE_PORT", "8123")),
+            username=os.environ.get("CLICKHOUSE_USER", "default"),
+            password=os.environ.get("CLICKHOUSE_PASSWORD", "default"),
+            database=os.environ.get("CLICKHOUSE_DATABASE", "default"),
+            secure=os.environ.get("CLICKHOUSE_SECURE", "false").lower() == "true",
+        )
+        result = await client.query(
+            f"SELECT DISTINCT pool FROM {POOL_CREATED_TABLE} WHERE pool IS NOT NULL"
+        )
+        addresses = {row[0] for row in result.result_rows if row[0]}
+        return sorted(addresses)
+
+    if database == "postgresql":
+        import psycopg
+
+        host = os.environ.get("POSTGRES_HOST", "localhost")
+        port = int(os.environ.get("POSTGRES_PORT", "5432"))
+        user = os.environ.get("POSTGRES_USER", "postgres")
+        password = os.environ.get("POSTGRES_PASSWORD", "secret")
+        dbname = os.environ.get("POSTGRES_DB", "tiders")
+
+        _conninfo = " ".join(
+            [
+                f"host={host}",
+                f"port={port}",
+                f"dbname={dbname}",
+                f"user={user}",
+                f"password={password}",
+            ]
+        )
+        async with await psycopg.AsyncConnection.connect(_conninfo) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    f"SELECT DISTINCT pool FROM {POOL_CREATED_TABLE} WHERE pool IS NOT NULL"
+                )
+                rows = await cur.fetchall()
+        addresses = {row[0] for row in rows if row[0]}
+        return sorted(addresses)
+
     raise ValueError(
-        f"Pool loading for database '{database}' is not supported. Use one of: duckdb, pyarrow, delta_lake."
+        f"Pool loading for database '{database}' is not supported. Use one of: duckdb, pyarrow, delta_lake, clickhouse, postgresql."
     )
 
 
@@ -401,6 +470,13 @@ def _pool_event_steps() -> list[cc.Step]:
             ),
         ),
     )
+    steps.append(
+        cc.Step(
+            name="join_blocks_data",
+            kind=cc.StepKind.JOIN_BLOCK_DATA,
+            config=cc.JoinBlockDataConfig(),
+        )
+    )
 
     # Convert binary columns (addresses, hashes, topics) to "0x..." hex strings.
     steps.append(
@@ -440,6 +516,7 @@ async def run_pool_events_pipeline(
             logs=[
                 ingest.evm.LogRequest(
                     address=pool_addresses,
+                    include_blocks=True
                 )
             ],
             fields=ingest.evm.Fields(
@@ -455,6 +532,10 @@ async def run_pool_events_pipeline(
                     topic3=True,
                     data=True,
                 ),
+                block=ingest.evm.BlockFields(
+                    timestamp=True,
+                    number=True,
+                )
             ),
         ),
     )
