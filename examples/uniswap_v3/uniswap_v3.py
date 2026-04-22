@@ -77,7 +77,14 @@ DEFAULT_RPC_URL = "https://mainnet.gateway.tenderly.co"
 DATA_PATH = str(Path.cwd() / "data")
 Path(DATA_PATH).mkdir(parents=True, exist_ok=True)
 
-WRITER_CHOICES = ["clickhouse", "delta_lake", "duckdb", "iceberg", "pyarrow", "postgresql"]
+WRITER_CHOICES = [
+    "clickhouse",
+    "delta_lake",
+    "duckdb",
+    "iceberg",
+    "pyarrow",
+    "postgresql",
+]
 
 # Table name aliases
 POOL_CREATED_LOGS_TABLE = "uniswap_v3_factory_pool_created_logs"
@@ -199,7 +206,7 @@ async def create_writer(database: str) -> cc.Writer:
             kind=cc.WriterKind.CLICKHOUSE,
             config=cc.ClickHouseWriterConfig(client=client),
         )
-    
+
     if database == "postgresql":
         import psycopg
 
@@ -208,18 +215,18 @@ async def create_writer(database: str) -> cc.Writer:
         user = os.environ.get("POSTGRES_USER", "postgres")
         password = os.environ.get("POSTGRES_PASSWORD", "secret")
         dbname = os.environ.get("POSTGRES_DB", "tiders")
-        
+
         _conninfo = " ".join(
-                [
-                    f"host={host}",
-                    f"port={port}",
-                    f"dbname={dbname}",
-                    f"user={user}",
-                    f"password={password}",
-                ]
-            )
+            [
+                f"host={host}",
+                f"port={port}",
+                f"dbname={dbname}",
+                f"user={user}",
+                f"password={password}",
+            ]
+        )
         connection = await psycopg.AsyncConnection.connect(_conninfo, autocommit=False)
-        
+
         return cc.Writer(
             kind=cc.WriterKind.POSTGRESQL,
             config=cc.PostgresqlWriterConfig(connection=connection),
@@ -513,12 +520,7 @@ async def run_pool_events_pipeline(
         params=ingest.evm.Query(
             from_block=from_block,
             to_block=to_block,
-            logs=[
-                ingest.evm.LogRequest(
-                    address=pool_addresses,
-                    include_blocks=True
-                )
-            ],
+            logs=[ingest.evm.LogRequest(address=pool_addresses, include_blocks=True)],
             fields=ingest.evm.Fields(
                 log=ingest.evm.LogFields(
                     block_number=True,
@@ -535,7 +537,7 @@ async def run_pool_events_pipeline(
                 block=ingest.evm.BlockFields(
                     timestamp=True,
                     number=True,
-                )
+                ),
             ),
         ),
     )
