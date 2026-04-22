@@ -215,12 +215,12 @@ class PyArrowDatasetWriterConfig:
 
     base_dir: str
     basename_template: Optional[str] = None
-    partitioning: Dict[str, pa_dataset.Partitioning | list[str]] = field(
+    partitioning: Dict[str, pa_dataset.Partitioning | list[str]] = field(  # pyright: ignore[reportPrivateImportUsage]
         default_factory=dict
     )
     partitioning_flavor: Dict[str, str] = field(default_factory=dict)
-    filesystem: Optional[pa_fs.FileSystem] = None
-    file_options: Optional[pa_dataset.FileWriteOptions] = None
+    filesystem: Optional[pa_fs.FileSystem] = None  # pyright: ignore[reportPrivateImportUsage]
+    file_options: Optional[pa_dataset.FileWriteOptions] = None  # pyright: ignore[reportPrivateImportUsage]
     use_threads: bool = True
     max_partitions: int = 1024
     max_open_files: int = 1024

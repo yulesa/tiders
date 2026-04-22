@@ -41,13 +41,13 @@ class Writer(DataWriter):
         """Append a table to its CSV file, writing the header only on first push."""
         file_path = self._file_path(table_name)
         first_write = table_name not in self._written
-        write_options = pa_csv.WriteOptions(
+        write_options = pa_csv.WriteOptions(  # pyright: ignore[reportPrivateImportUsage]
             include_header=self.config.include_header and first_write,
             delimiter=self.config.delimiter,
         )
         mode = "wb" if first_write else "ab"
         with open(str(file_path), mode) as f:
-            pa_csv.write_csv(table_data, f, write_options=write_options)
+            pa_csv.write_csv(table_data, f, write_options=write_options)  # pyright: ignore[reportPrivateImportUsage]
         self._written.add(table_name)
 
     async def push_data(self, data: Dict[str, pa.Table]) -> None:
