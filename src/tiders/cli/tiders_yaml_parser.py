@@ -99,6 +99,9 @@ from tiders.config import (
     ClickHouseWriterConfig,
     CsvWriterConfig,
     DataFusionStepConfig,
+    DropEmptyTablesConfig,
+    DeleteColumnsConfig,
+    DeleteTablesConfig,
     DeltaLakeWriterConfig,
     DuckdbWriterConfig,
     EvmDecodeEventsConfig,
@@ -111,13 +114,24 @@ from tiders.config import (
     PandasStepConfig,
     PolarsStepConfig,
     PostgresqlWriterConfig,
+    PrefixColumnsConfig,
+    PrefixTablesConfig,
     PyArrowDatasetWriterConfig,
+    ReorderColumnsConfig,
+    RenameColumnsConfig,
+    RenameTablesConfig,
+    SelectColumnsConfig,
+    SelectTablesConfig,
     SetChainIdConfig,
+    SuffixColumnsConfig,
+    SuffixTablesConfig,
     Step,
     StepKind,
     SvmDecodeInstructionsConfig,
     SvmDecodeLogsConfig,
     SvmTableAliases,
+    AddColumnsConfig,
+    CopyColumnsConfig,
     U256ToBinaryConfig,
     Writer,
     WriterKind,
@@ -1055,6 +1069,248 @@ def _parse_step_config(kind: StepKind, raw: dict[str, Any], path: str) -> Any:
                 cfg_path,
             )
         return SetChainIdConfig(chain_id=int(raw["chain_id"]))
+
+    if kind == StepKind.DELETE_TABLES:
+        valid_keys = {f.name for f in dataclasses.fields(DeleteTablesConfig)}
+        unknown = set(raw.keys()) - valid_keys
+        if unknown:
+            raise YamlConfigError(
+                f"Unknown delete_tables config keys: {sorted(unknown)}. "
+                f"Valid keys: {sorted(valid_keys)}.",
+                cfg_path,
+            )
+        if "tables" not in raw:
+            raise YamlConfigError(
+                "delete_tables requires 'config.tables' (list of table names).",
+                cfg_path,
+            )
+        return DeleteTablesConfig(tables=raw["tables"])
+
+    if kind == StepKind.DELETE_COLUMNS:
+        valid_keys = {f.name for f in dataclasses.fields(DeleteColumnsConfig)}
+        unknown = set(raw.keys()) - valid_keys
+        if unknown:
+            raise YamlConfigError(
+                f"Unknown delete_columns config keys: {sorted(unknown)}. "
+                f"Valid keys: {sorted(valid_keys)}.",
+                cfg_path,
+            )
+        if "tables" not in raw:
+            raise YamlConfigError(
+                "delete_columns requires 'config.tables' "
+                "(dict of table name to list of column names).",
+                cfg_path,
+            )
+        return DeleteColumnsConfig(tables=raw["tables"])
+
+    if kind == StepKind.RENAME_TABLES:
+        valid_keys = {f.name for f in dataclasses.fields(RenameTablesConfig)}
+        unknown = set(raw.keys()) - valid_keys
+        if unknown:
+            raise YamlConfigError(
+                f"Unknown rename_tables config keys: {sorted(unknown)}. "
+                f"Valid keys: {sorted(valid_keys)}.",
+                cfg_path,
+            )
+        if "mappings" not in raw:
+            raise YamlConfigError(
+                "rename_tables requires 'config.mappings' "
+                "(dict of source table name to destination table name).",
+                cfg_path,
+            )
+        return RenameTablesConfig(mappings=raw["mappings"])
+
+    if kind == StepKind.RENAME_COLUMNS:
+        valid_keys = {f.name for f in dataclasses.fields(RenameColumnsConfig)}
+        unknown = set(raw.keys()) - valid_keys
+        if unknown:
+            raise YamlConfigError(
+                f"Unknown rename_columns config keys: {sorted(unknown)}. "
+                f"Valid keys: {sorted(valid_keys)}.",
+                cfg_path,
+            )
+        if "tables" not in raw:
+            raise YamlConfigError(
+                "rename_columns requires 'config.tables' "
+                "(dict of table name to column rename map).",
+                cfg_path,
+            )
+        return RenameColumnsConfig(tables=raw["tables"])
+
+    if kind == StepKind.SELECT_TABLES:
+        valid_keys = {f.name for f in dataclasses.fields(SelectTablesConfig)}
+        unknown = set(raw.keys()) - valid_keys
+        if unknown:
+            raise YamlConfigError(
+                f"Unknown select_tables config keys: {sorted(unknown)}. "
+                f"Valid keys: {sorted(valid_keys)}.",
+                cfg_path,
+            )
+        if "tables" not in raw:
+            raise YamlConfigError(
+                "select_tables requires 'config.tables' (list of table names).",
+                cfg_path,
+            )
+        return SelectTablesConfig(tables=raw["tables"])
+
+    if kind == StepKind.SELECT_COLUMNS:
+        valid_keys = {f.name for f in dataclasses.fields(SelectColumnsConfig)}
+        unknown = set(raw.keys()) - valid_keys
+        if unknown:
+            raise YamlConfigError(
+                f"Unknown select_columns config keys: {sorted(unknown)}. "
+                f"Valid keys: {sorted(valid_keys)}.",
+                cfg_path,
+            )
+        if "tables" not in raw:
+            raise YamlConfigError(
+                "select_columns requires 'config.tables' "
+                "(dict of table name to list of column names).",
+                cfg_path,
+            )
+        return SelectColumnsConfig(tables=raw["tables"])
+
+    if kind == StepKind.REORDER_COLUMNS:
+        valid_keys = {f.name for f in dataclasses.fields(ReorderColumnsConfig)}
+        unknown = set(raw.keys()) - valid_keys
+        if unknown:
+            raise YamlConfigError(
+                f"Unknown reorder_columns config keys: {sorted(unknown)}. "
+                f"Valid keys: {sorted(valid_keys)}.",
+                cfg_path,
+            )
+        if "tables" not in raw:
+            raise YamlConfigError(
+                "reorder_columns requires 'config.tables' "
+                "(dict of table name to column order list).",
+                cfg_path,
+            )
+        return ReorderColumnsConfig(tables=raw["tables"])
+
+    if kind == StepKind.ADD_COLUMNS:
+        valid_keys = {f.name for f in dataclasses.fields(AddColumnsConfig)}
+        unknown = set(raw.keys()) - valid_keys
+        if unknown:
+            raise YamlConfigError(
+                f"Unknown add_columns config keys: {sorted(unknown)}. "
+                f"Valid keys: {sorted(valid_keys)}.",
+                cfg_path,
+            )
+        if "tables" not in raw:
+            raise YamlConfigError(
+                "add_columns requires 'config.tables' "
+                "(dict of table name to constant column map).",
+                cfg_path,
+            )
+        return AddColumnsConfig(tables=raw["tables"])
+
+    if kind == StepKind.COPY_COLUMNS:
+        valid_keys = {f.name for f in dataclasses.fields(CopyColumnsConfig)}
+        unknown = set(raw.keys()) - valid_keys
+        if unknown:
+            raise YamlConfigError(
+                f"Unknown copy_columns config keys: {sorted(unknown)}. "
+                f"Valid keys: {sorted(valid_keys)}.",
+                cfg_path,
+            )
+        if "tables" not in raw:
+            raise YamlConfigError(
+                "copy_columns requires 'config.tables' "
+                "(dict of table name to copy map).",
+                cfg_path,
+            )
+        return CopyColumnsConfig(tables=raw["tables"])
+
+    if kind == StepKind.PREFIX_COLUMNS:
+        valid_keys = {f.name for f in dataclasses.fields(PrefixColumnsConfig)}
+        unknown = set(raw.keys()) - valid_keys
+        if unknown:
+            raise YamlConfigError(
+                f"Unknown prefix_columns config keys: {sorted(unknown)}. "
+                f"Valid keys: {sorted(valid_keys)}.",
+                cfg_path,
+            )
+        if "prefix" not in raw:
+            raise YamlConfigError(
+                "prefix_columns requires 'config.prefix'.",
+                cfg_path,
+            )
+        if "tables" not in raw:
+            raise YamlConfigError(
+                "prefix_columns requires 'config.tables' "
+                "(dict of table name to list of column names).",
+                cfg_path,
+            )
+        return PrefixColumnsConfig(prefix=raw["prefix"], tables=raw["tables"])
+
+    if kind == StepKind.SUFFIX_COLUMNS:
+        valid_keys = {f.name for f in dataclasses.fields(SuffixColumnsConfig)}
+        unknown = set(raw.keys()) - valid_keys
+        if unknown:
+            raise YamlConfigError(
+                f"Unknown suffix_columns config keys: {sorted(unknown)}. "
+                f"Valid keys: {sorted(valid_keys)}.",
+                cfg_path,
+            )
+        if "suffix" not in raw:
+            raise YamlConfigError(
+                "suffix_columns requires 'config.suffix'.",
+                cfg_path,
+            )
+        if "tables" not in raw:
+            raise YamlConfigError(
+                "suffix_columns requires 'config.tables' "
+                "(dict of table name to list of column names).",
+                cfg_path,
+            )
+        return SuffixColumnsConfig(suffix=raw["suffix"], tables=raw["tables"])
+
+    if kind == StepKind.PREFIX_TABLES:
+        valid_keys = {f.name for f in dataclasses.fields(PrefixTablesConfig)}
+        unknown = set(raw.keys()) - valid_keys
+        if unknown:
+            raise YamlConfigError(
+                f"Unknown prefix_tables config keys: {sorted(unknown)}. "
+                f"Valid keys: {sorted(valid_keys)}.",
+                cfg_path,
+            )
+        if "prefix" not in raw:
+            raise YamlConfigError("prefix_tables requires 'config.prefix'.", cfg_path)
+        if "tables" not in raw:
+            raise YamlConfigError(
+                "prefix_tables requires 'config.tables' (list of table names).",
+                cfg_path,
+            )
+        return PrefixTablesConfig(prefix=raw["prefix"], tables=raw["tables"])
+
+    if kind == StepKind.SUFFIX_TABLES:
+        valid_keys = {f.name for f in dataclasses.fields(SuffixTablesConfig)}
+        unknown = set(raw.keys()) - valid_keys
+        if unknown:
+            raise YamlConfigError(
+                f"Unknown suffix_tables config keys: {sorted(unknown)}. "
+                f"Valid keys: {sorted(valid_keys)}.",
+                cfg_path,
+            )
+        if "suffix" not in raw:
+            raise YamlConfigError("suffix_tables requires 'config.suffix'.", cfg_path)
+        if "tables" not in raw:
+            raise YamlConfigError(
+                "suffix_tables requires 'config.tables' (list of table names).",
+                cfg_path,
+            )
+        return SuffixTablesConfig(suffix=raw["suffix"], tables=raw["tables"])
+
+    if kind == StepKind.DROP_EMPTY_TABLES:
+        valid_keys = {f.name for f in dataclasses.fields(DropEmptyTablesConfig)}
+        unknown = set(raw.keys()) - valid_keys
+        if unknown:
+            raise YamlConfigError(
+                f"Unknown drop_empty_tables config keys: {sorted(unknown)}. "
+                f"Valid keys: {sorted(valid_keys)}.",
+                cfg_path,
+            )
+        return DropEmptyTablesConfig(tables=raw.get("tables"))
 
     if kind == StepKind.SVM_DECODE_INSTRUCTIONS:
         return _parse_svm_decode_instructions_config(raw, cfg_path)
