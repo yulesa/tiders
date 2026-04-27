@@ -23,6 +23,20 @@ from .config import (
     EvmTableAliases,
     SvmTableAliases,
     SetChainIdConfig,
+    DeleteTablesConfig,
+    DeleteColumnsConfig,
+    RenameTablesConfig,
+    RenameColumnsConfig,
+    SelectTablesConfig,
+    SelectColumnsConfig,
+    ReorderColumnsConfig,
+    AddColumnsConfig,
+    CopyColumnsConfig,
+    PrefixColumnsConfig,
+    SuffixColumnsConfig,
+    PrefixTablesConfig,
+    SuffixTablesConfig,
+    DropEmptyTablesConfig,
     JoinBlockDataConfig,
     JoinSvmTransactionDataConfig,
     JoinEvmTransactionDataConfig,
@@ -156,6 +170,48 @@ def process_steps(
         elif step.kind == StepKind.SET_CHAIN_ID:
             assert isinstance(step.config, SetChainIdConfig)
             data = step_def.set_chain_id.execute(data, step.config)
+        elif step.kind == StepKind.DELETE_TABLES:
+            assert isinstance(step.config, DeleteTablesConfig)
+            data = step_def.delete_tables.execute(data, step.config)
+        elif step.kind == StepKind.DELETE_COLUMNS:
+            assert isinstance(step.config, DeleteColumnsConfig)
+            data = step_def.delete_columns.execute(data, step.config)
+        elif step.kind == StepKind.RENAME_TABLES:
+            assert isinstance(step.config, RenameTablesConfig)
+            data = step_def.rename_tables.execute(data, step.config)
+        elif step.kind == StepKind.RENAME_COLUMNS:
+            assert isinstance(step.config, RenameColumnsConfig)
+            data = step_def.rename_columns.execute(data, step.config)
+        elif step.kind == StepKind.SELECT_TABLES:
+            assert isinstance(step.config, SelectTablesConfig)
+            data = step_def.select_tables.execute(data, step.config)
+        elif step.kind == StepKind.SELECT_COLUMNS:
+            assert isinstance(step.config, SelectColumnsConfig)
+            data = step_def.select_columns.execute(data, step.config)
+        elif step.kind == StepKind.REORDER_COLUMNS:
+            assert isinstance(step.config, ReorderColumnsConfig)
+            data = step_def.reorder_columns.execute(data, step.config)
+        elif step.kind == StepKind.ADD_COLUMNS:
+            assert isinstance(step.config, AddColumnsConfig)
+            data = step_def.add_columns.execute(data, step.config)
+        elif step.kind == StepKind.COPY_COLUMNS:
+            assert isinstance(step.config, CopyColumnsConfig)
+            data = step_def.copy_columns.execute(data, step.config)
+        elif step.kind == StepKind.PREFIX_COLUMNS:
+            assert isinstance(step.config, PrefixColumnsConfig)
+            data = step_def.prefix_columns.execute(data, step.config)
+        elif step.kind == StepKind.SUFFIX_COLUMNS:
+            assert isinstance(step.config, SuffixColumnsConfig)
+            data = step_def.suffix_columns.execute(data, step.config)
+        elif step.kind == StepKind.PREFIX_TABLES:
+            assert isinstance(step.config, PrefixTablesConfig)
+            data = step_def.prefix_tables.execute(data, step.config)
+        elif step.kind == StepKind.SUFFIX_TABLES:
+            assert isinstance(step.config, SuffixTablesConfig)
+            data = step_def.suffix_tables.execute(data, step.config)
+        elif step.kind == StepKind.DROP_EMPTY_TABLES:
+            assert isinstance(step.config, DropEmptyTablesConfig)
+            data = step_def.drop_empty_tables.execute(data, step.config)
         elif step.kind == StepKind.JOIN_BLOCK_DATA:
             assert isinstance(step.config, JoinBlockDataConfig)
             data = step_def.join_block_data.execute(data, step.config)

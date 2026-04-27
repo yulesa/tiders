@@ -68,6 +68,20 @@ class StepKind(str, Enum):
     JOIN_BLOCK_DATA = "join_block_data"
     JOIN_SVM_TRANSACTION_DATA = "join_svm_transaction_data"
     JOIN_EVM_TRANSACTION_DATA = "join_evm_transaction_data"
+    DELETE_TABLES = "delete_tables"
+    DELETE_COLUMNS = "delete_columns"
+    RENAME_TABLES = "rename_tables"
+    RENAME_COLUMNS = "rename_columns"
+    SELECT_TABLES = "select_tables"
+    SELECT_COLUMNS = "select_columns"
+    REORDER_COLUMNS = "reorder_columns"
+    ADD_COLUMNS = "add_columns"
+    COPY_COLUMNS = "copy_columns"
+    PREFIX_COLUMNS = "prefix_columns"
+    SUFFIX_COLUMNS = "suffix_columns"
+    PREFIX_TABLES = "prefix_tables"
+    SUFFIX_TABLES = "suffix_tables"
+    DROP_EMPTY_TABLES = "drop_empty_tables"
     SET_CHAIN_ID = "set_chain_id"
     DATAFUSION = "datafusion"
     POLARS = "polars"
@@ -664,6 +678,202 @@ class SetChainIdConfig:
 
 
 @dataclass
+class DeleteTablesConfig:
+    """Configuration for the delete-tables step.
+
+    Removes tables from the data dictionary before later steps or writers see
+    them.
+
+    Attributes:
+        tables: The table names to remove.
+    """
+
+    tables: list[str]
+
+
+@dataclass
+class DeleteColumnsConfig:
+    """Configuration for the delete-columns step.
+
+    Drops columns from one or more tables.
+
+    Attributes:
+        tables: A mapping of table name to the columns that should be removed
+            from that table.
+    """
+
+    tables: Dict[str, list[str]]
+
+
+@dataclass
+class RenameTablesConfig:
+    """Configuration for the rename-tables step.
+
+    Renames top-level tables in the data dictionary.
+
+    Attributes:
+        mappings: A mapping of source table name to destination table name.
+    """
+
+    mappings: Dict[str, str]
+
+
+@dataclass
+class RenameColumnsConfig:
+    """Configuration for the rename-columns step.
+
+    Renames columns in one or more tables.
+
+    Attributes:
+        tables: A mapping of table name to its
+            ``{old_column_name: new_column_name}`` rename map.
+    """
+
+    tables: Dict[str, Dict[str, str]]
+
+
+@dataclass
+class SelectTablesConfig:
+    """Configuration for the select-tables step.
+
+    Keeps only the listed tables in the data dictionary.
+
+    Attributes:
+        tables: The table names to keep.
+    """
+
+    tables: list[str]
+
+
+@dataclass
+class SelectColumnsConfig:
+    """Configuration for the select-columns step.
+
+    Keeps only the listed columns for each configured table.
+
+    Attributes:
+        tables: A mapping of table name to the columns that should be kept.
+    """
+
+    tables: Dict[str, list[str]]
+
+
+@dataclass
+class ReorderColumnsConfig:
+    """Configuration for the reorder-columns step.
+
+    Reorders columns in the configured tables.
+
+    Attributes:
+        tables: A mapping of table name to the desired leading column order.
+            Columns not listed are appended in their original order.
+    """
+
+    tables: Dict[str, list[str]]
+
+
+@dataclass
+class AddColumnsConfig:
+    """Configuration for the add-columns step.
+
+    Adds constant-value columns to one or more tables. Existing columns with
+    the same name are replaced.
+
+    Attributes:
+        tables: A mapping of table name to ``{column_name: constant_value}``.
+    """
+
+    tables: Dict[str, Dict[str, Any]]
+
+
+@dataclass
+class CopyColumnsConfig:
+    """Configuration for the copy-columns step.
+
+    Copies existing columns to new column names in one or more tables.
+
+    Attributes:
+        tables: A mapping of table name to ``{source_column: destination_column}``.
+    """
+
+    tables: Dict[str, Dict[str, str]]
+
+
+@dataclass
+class PrefixColumnsConfig:
+    """Configuration for the prefix-columns step.
+
+    Adds a common prefix to selected columns.
+
+    Attributes:
+        prefix: The prefix to prepend.
+        tables: A mapping of table name to the columns that should be renamed.
+    """
+
+    prefix: str
+    tables: Dict[str, list[str]]
+
+
+@dataclass
+class SuffixColumnsConfig:
+    """Configuration for the suffix-columns step.
+
+    Adds a common suffix to selected columns.
+
+    Attributes:
+        suffix: The suffix to append.
+        tables: A mapping of table name to the columns that should be renamed.
+    """
+
+    suffix: str
+    tables: Dict[str, list[str]]
+
+
+@dataclass
+class PrefixTablesConfig:
+    """Configuration for the prefix-tables step.
+
+    Adds a common prefix to selected table names.
+
+    Attributes:
+        prefix: The prefix to prepend.
+        tables: The table names to rename.
+    """
+
+    prefix: str
+    tables: list[str]
+
+
+@dataclass
+class SuffixTablesConfig:
+    """Configuration for the suffix-tables step.
+
+    Adds a common suffix to selected table names.
+
+    Attributes:
+        suffix: The suffix to append.
+        tables: The table names to rename.
+    """
+
+    suffix: str
+    tables: list[str]
+
+
+@dataclass
+class DropEmptyTablesConfig:
+    """Configuration for the drop-empty-tables step.
+
+    Removes empty tables from the data dictionary.
+
+    Attributes:
+        tables: Optional subset of table names to consider. When ``None``, all
+            tables are checked.
+    """
+
+    tables: Optional[list[str]] = None
+
+
+@dataclass
 class EvmTableAliases:
     """Optional table name overrides for EVM data sources.
 
@@ -733,6 +943,20 @@ class Step:
         | PandasStepConfig
         | DataFusionStepConfig
         | SetChainIdConfig
+        | DeleteTablesConfig
+        | DeleteColumnsConfig
+        | RenameTablesConfig
+        | RenameColumnsConfig
+        | SelectTablesConfig
+        | SelectColumnsConfig
+        | ReorderColumnsConfig
+        | AddColumnsConfig
+        | CopyColumnsConfig
+        | PrefixColumnsConfig
+        | SuffixColumnsConfig
+        | PrefixTablesConfig
+        | SuffixTablesConfig
+        | DropEmptyTablesConfig
         | JoinBlockDataConfig
         | JoinSvmTransactionDataConfig
         | JoinEvmTransactionDataConfig
@@ -779,6 +1003,20 @@ __all__ = [
     "PandasStepConfig",
     "DataFusionStepConfig",
     "SetChainIdConfig",
+    "DeleteTablesConfig",
+    "DeleteColumnsConfig",
+    "RenameTablesConfig",
+    "RenameColumnsConfig",
+    "SelectTablesConfig",
+    "SelectColumnsConfig",
+    "ReorderColumnsConfig",
+    "AddColumnsConfig",
+    "CopyColumnsConfig",
+    "PrefixColumnsConfig",
+    "SuffixColumnsConfig",
+    "PrefixTablesConfig",
+    "SuffixTablesConfig",
+    "DropEmptyTablesConfig",
     "JoinBlockDataConfig",
     "JoinSvmTransactionDataConfig",
     "JoinEvmTransactionDataConfig",
