@@ -86,7 +86,7 @@ class Writer(DataWriter):
                     f"Checkpoint column '{column}' not found in CSV table '{table}'. "
                     f"Check the 'column' field in your checkpoint config."
                 )
-            arrow_table = pa_csv.read_csv(
+            arrow_table = pa_csv.read_csv(  # pyright: ignore[reportPrivateImportUsage]
                 str(file_path),
                 convert_options=pa_csv.ConvertOptions(include_columns=[column]),  # pyright: ignore[reportPrivateImportUsage]
             )
