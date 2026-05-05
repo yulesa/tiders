@@ -47,7 +47,31 @@ contracts:
     # An abi: ./erc20.abi.json config will be added after using CLI command `tiders abi` in this folder
 
 # ---------------------------------------------------------------------------
-# 3. Query
+# 3. Writer
+# ---------------------------------------------------------------------------
+# The writer defines where transformed data is stored and from where the checkpoint is read.
+# DuckDB creates a local database file. Other options include ClickHouse,
+# Delta Lake, Iceberg, PostgreSQL, PyArrow Dataset (Parquet), and CSV.
+
+writer:
+  kind: duckdb
+  config:
+    path: data/transfers.duckdb
+    
+# ---------------------------------------------------------------------------
+# 4. Checkpoint (Optional)
+# ---------------------------------------------------------------------------
+# The checkpoint tells the pipeline where to resume from in case of interruptions. 
+# It reads the last processed block number from the specified table and column in the writer's database once at pipeline start and then overwrite the query's from_block with that value + 1.
+
+
+checkpoint:
+  table: transfers # required: the table name to read the checkpoint from.
+  column: block_number # optional: the column name to read the checkpoint from. Default is "block_number".
+  writer_index: 0 # optional: the writer index in case there are multiple writers. Default is 0 (the first writer).
+
+# ---------------------------------------------------------------------------
+# 5. Query
 # ---------------------------------------------------------------------------
 # The query defines what data to fetch: block range, filters, and fields.
 #
@@ -85,17 +109,10 @@ steps:
       event_signature: erc20.Events.Transfer.signature
       output_table: transfers
       allow_decode_fail: true
-      hstack: false
+      hstack: true
+  - kind: cast_by_type
+    config:
+      from_type: "decimal256(76,0)" # The source pyarrow.DataType to match.
+      to_type: "decimal128(38,0)"   # The target pyarrow.DataType to cast
+      allow_cast_fail: true  
   - kind: hex_encode
-
-# ---------------------------------------------------------------------------
-# 5. Writer
-# ---------------------------------------------------------------------------
-# The writer defines where transformed data is stored.
-# DuckDB creates a local database file. Other options include ClickHouse,
-# Delta Lake, Iceberg, PostgreSQL, PyArrow Dataset (Parquet), and CSV.
-
-writer:
-  kind: duckdb
-  config:
-    path: data/transfers.duckdb

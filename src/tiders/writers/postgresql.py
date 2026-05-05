@@ -7,7 +7,7 @@ Automatically creates tables from Arrow schemas and inserts data using the
 import asyncio
 import logging
 from decimal import Decimal
-from typing import Any, Dict, LiteralString, cast as type_cast
+from typing import Any, Dict, Optional, cast as type_cast
 from ..config import PostgresqlWriterConfig
 
 import psycopg.sql as sql
@@ -168,9 +168,7 @@ class Writer(DataWriter):
         col_defs = sql.SQL(",\n    ").join(
             sql.SQL("{} {}").format(
                 sql.Identifier(field.name),
-                sql.SQL(
-                    type_cast(LiteralString, pyarrow_type_to_postgresql(field.type))
-                ),
+                sql.SQL(pyarrow_type_to_postgresql(field.type)),  # type: ignore[arg-type]
             )
             for field in schema
         )
@@ -193,9 +191,7 @@ class Writer(DataWriter):
             sql.Identifier(self.schema), sql.Identifier(table_name)
         )
         col_ids = sql.SQL(", ").join(sql.Identifier(f.name) for f in table.schema)
-        copy_stmt = sql.SQL("COPY {} ({}) FROM STDIN (FORMAT TEXT, NULL '\\N')").format(
-            qualified_id, col_ids
-        )
+        copy_stmt = sql.SQL("COPY {} ({}) FROM STDIN").format(qualified_id, col_ids)
 
         async with self.connection.cursor() as cur:
             async with cur.copy(copy_stmt) as copy:
@@ -204,26 +200,10 @@ class Writer(DataWriter):
                 types = [table.schema.field(i).type for i in range(table.num_columns)]
 
                 for row_idx in range(num_rows):
-                    row_values = []
-                    for col, dt in zip(columns, types):
-                        raw = col[row_idx].as_py()
-                        val = _arrow_value_to_python(raw, dt)
-                        if val is None:
-                            row_values.append("\\N")
-                        elif isinstance(val, bool):
-                            row_values.append("t" if val else "f")
-                        elif isinstance(val, bytes):
-                            row_values.append("\\\\x" + val.hex())
-                        elif isinstance(val, Decimal):
-                            row_values.append(str(val))
-                        else:
-                            row_values.append(
-                                str(val)
-                                .replace("\t", "\\t")
-                                .replace("\n", "\\n")
-                                .replace("\r", "\\r")
-                                .replace("\\", "\\\\")
-                            )
+                    row_values = [
+                        _arrow_value_to_python(col[row_idx].as_py(), dt)
+                        for col, dt in zip(columns, types)
+                    ]
                     await copy.write_row(row_values)
 
         await self.connection.commit()
@@ -253,3 +233,27 @@ class Writer(DataWriter):
 
         if self.anchor_table is not None and self.anchor_table in data:
             await self._copy_table(self.anchor_table, data[self.anchor_table])
+
+    async def read_max_block(self, table: str, column: str) -> Optional[int]:
+        """Return MAX(column) from table, or None if the table is missing or empty."""
+        import psycopg.errors
+
+        await self._ensure_connection()
+        assert self.connection is not None
+        qualified = sql.SQL("{}.{}").format(
+            sql.Identifier(self.schema), sql.Identifier(table)
+        )
+        query = sql.SQL("SELECT MAX({}) FROM {}").format(
+            sql.Identifier(column), qualified
+        )
+        try:
+            async with self.connection.cursor() as cur:
+                await cur.execute(query)
+                row = await cur.fetchone()
+            await self.connection.commit()
+        except psycopg.errors.UndefinedTable:
+            await self.connection.rollback()
+            return None
+        if row is None or row[0] is None:
+            return None
+        return int(row[0])

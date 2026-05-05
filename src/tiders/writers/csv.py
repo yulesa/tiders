@@ -8,9 +8,10 @@ table. All tables except the ``anchor_table`` are written in parallel.
 
 import logging
 from pathlib import Path
-from typing import Dict, Set
+from typing import Dict, Optional, Set
 
 import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.csv as pa_csv
 import asyncio
 
@@ -71,3 +72,27 @@ class Writer(DataWriter):
                 self.config.anchor_table,
                 data[self.config.anchor_table],
             )
+
+    async def read_max_block(self, table: str, column: str) -> Optional[int]:
+        """Return MAX(column) from the CSV file, or None if missing or empty."""
+
+        def _query() -> Optional[int]:
+            file_path = Path(self.config.base_dir) / f"{table}.csv"
+            if not file_path.is_file():
+                return None
+            schema = pa_csv.open_csv(str(file_path)).schema  # pyright: ignore[reportPrivateImportUsage]
+            if column not in schema.names:
+                raise ValueError(
+                    f"Checkpoint column '{column}' not found in CSV table '{table}'. "
+                    f"Check the 'column' field in your checkpoint config."
+                )
+            arrow_table = pa_csv.read_csv(  # pyright: ignore[reportPrivateImportUsage]
+                str(file_path),
+                convert_options=pa_csv.ConvertOptions(include_columns=[column]),  # pyright: ignore[reportPrivateImportUsage]
+            )
+            if arrow_table.num_rows == 0:
+                return None
+            value = pc.max(arrow_table.column(column)).as_py()  # type: ignore[attr-defined]
+            return int(value) if value is not None else None
+
+        return await asyncio.to_thread(_query)

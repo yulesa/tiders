@@ -14,6 +14,7 @@ from .config import (
     Base58EncodeConfig,
     CastByTypeConfig,
     CastConfig,
+    CheckpointConfig,
     PolarsStepConfig,
     PandasStepConfig,
     DataFusionStepConfig,
@@ -283,16 +284,38 @@ async def run_pipeline(pipeline: Pipeline, pipeline_name: Optional[str] = None):
         pipeline: The fully configured :class:`Pipeline` object.
         pipeline_name: An optional name used in log messages for identification.
     """
+    if not logging.root.handlers:
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
     logger.info(f"Running pipeline: {pipeline_name}")
     logger.debug(f"Pipeline config: {pipeline}")
-
-    stream = start_stream(pipeline.provider, pipeline.query)
 
     writers = (
         [create_writer(w) for w in pipeline.writer]
         if isinstance(pipeline.writer, list)
         else [create_writer(pipeline.writer)]
     )
+
+    if pipeline.checkpoint:
+        cfg: CheckpointConfig = pipeline.checkpoint
+        writer = writers[cfg.writer_index]
+        max_block = await writer.read_max_block(cfg.table, cfg.column)
+        if max_block is not None:
+            logger.info(
+                f"Checkpoint: resuming from block {max_block + 1} "
+                f"(MAX({cfg.column}) = {max_block} in '{cfg.table}')"
+            )
+            pipeline.query.params.from_block = max_block + 1
+        else:
+            logger.info(
+                f"Checkpoint: no data found in '{cfg.table}', "
+                f"using configured from_block"
+            )
+
+    stream = start_stream(pipeline.provider, pipeline.query)
 
     while True:
         data = await stream.next()

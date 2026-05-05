@@ -98,9 +98,16 @@ def _resolve_tiders_yaml(
 
     try:
         yaml_dir = yaml_resolved_path.parent
-        project, provider, query, steps, writer, table_aliases, contracts = (
-            parse_tiders_yaml(raw_yaml, yaml_dir)
-        )
+        (
+            project,
+            provider,
+            query,
+            steps,
+            writer,
+            table_aliases,
+            contracts,
+            checkpoint,
+        ) = parse_tiders_yaml(raw_yaml, yaml_dir)
     except YamlConfigError as exc:
         raise click.ClickException(f"Config error: {exc}")
     except KeyError as exc:
@@ -114,6 +121,7 @@ def _resolve_tiders_yaml(
         steps,
         writer,
         table_aliases,
+        checkpoint,
     )
 
     if is_codegen:
@@ -313,9 +321,16 @@ def start(
     _setup_logging()
     logger = logging.getLogger("tiders.cli")
 
-    yaml_resolved_path, project, provider, query, steps, writer, table_aliases = (
-        _resolve_tiders_yaml(yaml_path, env_file)
-    )
+    (
+        yaml_resolved_path,
+        project,
+        provider,
+        query,
+        steps,
+        writer,
+        table_aliases,
+        checkpoint,
+    ) = _resolve_tiders_yaml(yaml_path, env_file)
     logger.info(f"Using YAML: {yaml_resolved_path}")
 
     if from_block is not None:
@@ -332,6 +347,7 @@ def start(
         writer=writer,
         steps=steps,
         table_aliases=table_aliases,
+        checkpoint=checkpoint,
     )
 
     logger.info(f"Starting {project.name} pipeline...")
@@ -386,6 +402,7 @@ def codegen(
         steps,
         writer,
         table_aliases,
+        checkpoint,
         raw_steps,
         env_map,
         contracts,
@@ -400,6 +417,7 @@ def codegen(
             steps=steps,
             writer=writer,
             table_aliases=table_aliases,
+            checkpoint=checkpoint,
             raw_steps=raw_steps,
             env_map=env_map,
             yaml_path=yaml_resolved_path,

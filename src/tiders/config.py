@@ -965,6 +965,27 @@ class Step:
 
 
 @dataclass
+class CheckpointConfig:
+    """Configuration for resuming a pipeline from the last written block.
+
+    Before the stream starts, tiders reads ``MAX(column)`` from ``table`` using
+    the writer at ``writer_index`` and sets the query ``from_block`` to that
+    value plus one.  If the table is empty or does not exist the configured
+    ``from_block`` is left unchanged.
+
+    Attributes:
+        table: Name of the destination table to read the max block from.
+        writer_index: Index into the pipeline's writer list (or 0 for a single
+            writer) that will be used to read the checkpoint value.
+        column: Column that holds the block number (default ``"block_number"``).
+    """
+
+    table: str
+    writer_index: int = 0
+    column: str = "block_number"
+
+
+@dataclass
 class Pipeline:
     """Top-level pipeline definition tying together ingestion, transformation, and output.
 
@@ -977,6 +998,8 @@ class Pipeline:
             ingested data.
         table_aliases: Optional table name overrides applied to raw ingested
             tables before any steps run.
+        checkpoint: Optional checkpoint config. When set, the pipeline reads the
+            max block already written and resumes from the next block.
     """
 
     provider: ProviderConfig
@@ -984,10 +1007,12 @@ class Pipeline:
     writer: Writer | List[Writer]
     steps: List[Step]
     table_aliases: Optional[EvmTableAliases | SvmTableAliases] = None
+    checkpoint: Optional[CheckpointConfig] = None
 
 
 __all__ = [
     "Pipeline",
+    "CheckpointConfig",
     "Step",
     "EvmDecodeEventsConfig",
     "EvmTableAliases",

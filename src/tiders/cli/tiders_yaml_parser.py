@@ -96,6 +96,7 @@ from tiders.config import (
     Base58EncodeConfig,
     CastByTypeConfig,
     CastConfig,
+    CheckpointConfig,
     ClickHouseWriterConfig,
     CsvWriterConfig,
     DataFusionStepConfig,
@@ -171,6 +172,7 @@ def parse_tiders_yaml(
     Writer | list[Writer],
     Optional[EvmTableAliases | SvmTableAliases],
     dict[str, ContractInfo],
+    Optional[CheckpointConfig],
 ]:
     """Parse a complete YAML config into its individual components.
 
@@ -183,8 +185,26 @@ def parse_tiders_yaml(
             relative paths (ABIs, Python files, etc.).
 
     Returns:
-        A tuple of ``(project, provider, query, steps, writer, table_aliases, contracts)``.
+        A tuple of ``(project, provider, query, steps, writer, table_aliases, contracts, checkpoint)``.
     """
+    valid_top_level_keys = {
+        "project",
+        "contracts",
+        "provider",
+        "query",
+        "steps",
+        "writer",
+        "table_aliases",
+        "checkpoint",
+        "environment_path",
+    }
+    unknown_top = set(raw_config.keys()) - valid_top_level_keys
+    if unknown_top:
+        raise YamlConfigError(
+            f"Unknown top-level keys: {sorted(unknown_top)}. "
+            f"Valid keys: {sorted(valid_top_level_keys)}."
+        )
+
     # Parse project metadata
     project = parse_project_info(raw_config.get("project"))
 
@@ -221,7 +241,11 @@ def parse_tiders_yaml(
             raw_config["table_aliases"], query.kind.value
         )
 
-    return project, provider, query, steps, writer, table_aliases, contracts
+    checkpoint = None
+    if "checkpoint" in raw_config:
+        checkpoint = parse_checkpoint(raw_config["checkpoint"])
+
+    return project, provider, query, steps, writer, table_aliases, contracts, checkpoint
 
 
 # ---------------------------------------------------------------------------
@@ -1868,6 +1892,64 @@ def _parse_param_inputs(
             ParamInput(name=p["name"], param_type=_parse_dyntype(p["type"], pp))
         )
     return result
+
+
+# ---------------------------------------------------------------------------
+# Checkpoint parsing
+# ---------------------------------------------------------------------------
+
+
+def parse_checkpoint(raw: Any) -> CheckpointConfig:
+    """Parse the ``checkpoint`` YAML section into a :class:`CheckpointConfig`.
+
+    Args:
+        raw: The raw value from the ``checkpoint:`` key.
+
+    Returns:
+        A ``CheckpointConfig`` instance.
+
+    Raises:
+        YamlConfigError: If ``checkpoint`` is not a mapping, missing required
+            keys, or contains unknown keys.
+    """
+    if isinstance(raw, list):
+        raise YamlConfigError(
+            "'checkpoint' must be a mapping, not a list. Remove the leading '-' from the YAML.",
+            "checkpoint",
+        )
+    if not isinstance(raw, dict):
+        raise YamlConfigError(
+            "'checkpoint' must be a mapping with at least a 'table' key.",
+            "checkpoint",
+        )
+
+    valid_keys = {"table", "writer_index", "column"}
+    unknown = set(raw.keys()) - valid_keys
+    if unknown:
+        raise YamlConfigError(
+            f"Unknown checkpoint keys: {sorted(unknown)}. "
+            f"Valid keys: {sorted(valid_keys)}.",
+            "checkpoint",
+        )
+
+    if "table" not in raw:
+        raise YamlConfigError(
+            "checkpoint requires 'table' (the destination table to read max block from).",
+            "checkpoint",
+        )
+
+    writer_index = raw.get("writer_index", 0)
+    if not isinstance(writer_index, int) or writer_index < 0:
+        raise YamlConfigError(
+            "'writer_index' must be a non-negative integer.",
+            "checkpoint.writer_index",
+        )
+
+    return CheckpointConfig(
+        table=raw["table"],
+        writer_index=writer_index,
+        column=raw.get("column", "block_number"),
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -5,8 +5,9 @@ supporting partitioning, custom filesystems, and configurable file options.
 """
 
 import logging
-from typing import Dict
+from typing import Dict, Optional
 import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.dataset as pa_dataset
 from .base import DataWriter
 from ..config import PyArrowDatasetWriterConfig
@@ -78,3 +79,28 @@ class Writer(DataWriter):
             await self._write_table(
                 self.config.anchor_table, data[self.config.anchor_table]
             )
+
+    async def read_max_block(self, table: str, column: str) -> Optional[int]:
+        """Return MAX(column) from the Parquet dataset, or None if missing or empty."""
+
+        def _query() -> Optional[int]:
+            try:
+                dataset = pa_dataset.dataset(
+                    f"{self.config.base_dir}/{table}",
+                    filesystem=self.config.filesystem,
+                    format="parquet",
+                )
+            except Exception:
+                return None
+            if column not in dataset.schema.names:
+                raise ValueError(
+                    f"Checkpoint column '{column}' not found in dataset table '{table}'. "
+                    f"Check the 'column' field in your checkpoint config."
+                )
+            arrow_table = dataset.to_table(columns=[column])
+            if arrow_table.num_rows == 0:
+                return None
+            value = pc.max(arrow_table.column(column)).as_py()  # type: ignore[attr-defined]
+            return int(value) if value is not None else None
+
+        return await asyncio.to_thread(_query)

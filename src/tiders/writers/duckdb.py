@@ -4,7 +4,7 @@ Inserts Arrow data into DuckDB tables, auto-creating them on the first push.
 """
 
 import logging
-from typing import Dict
+from typing import Dict, Optional
 import pyarrow as pa
 from .base import DataWriter
 from ..config import DuckdbWriterConfig
@@ -75,7 +75,7 @@ class Writer(DataWriter):
             )
         self.first_push = True
         logger.warning(
-            "DuckDB does not support Decimal256.\n"
+            "DuckDB does not support Decimal256. "
             "Tiders will try to automatically downcast Decimal256 columns to Decimal128(38, 0). "
             "Any data exceeding 38 digits of precision will cause a failure. "
             "To handle this, add a cast_by_type step before the writer with `allow_cast_fail=True` (overflowing values become null) "
@@ -126,3 +126,19 @@ class Writer(DataWriter):
     async def push_data(self, data: Dict[str, pa.Table]) -> None:
         """Insert data into DuckDB, running the blocking operation in a background thread."""
         await asyncio.to_thread(self.push_data_impl, data)
+
+    async def read_max_block(self, table: str, column: str) -> Optional[int]:
+        """Return MAX(column) from table, or None if the table is missing or empty."""
+
+        def _query() -> Optional[int]:
+            try:
+                result = self.connection.execute(
+                    f"SELECT MAX({column}) FROM {table}"
+                ).fetchone()
+                if result is None or result[0] is None:
+                    return None
+                return int(result[0])
+            except duckdb.CatalogException:  # type: ignore[union-attr]
+                return None
+
+        return await asyncio.to_thread(_query)

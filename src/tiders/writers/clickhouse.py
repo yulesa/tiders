@@ -5,7 +5,7 @@ Automatically creates tables from Arrow schemas and inserts data using the
 """
 
 import logging
-from typing import Dict, cast as type_cast
+from typing import Dict, Optional, cast as type_cast
 import pyarrow as pa
 from ..writers.base import DataWriter
 from ..config import ClickHouseWriterConfig
@@ -240,3 +240,15 @@ class Writer(DataWriter):
         if self.anchor_table is not None:
             table_data = data[self.anchor_table]
             await self.client.insert_arrow(self.anchor_table, table_data)
+
+    async def read_max_block(self, table: str, column: str) -> Optional[int]:
+        """Return MAX(column) from table, or None if the table is missing or empty."""
+        await self._ensure_client()
+        assert self.client is not None
+        if not await self._check_table_exists(table):
+            return None
+        result = await self.client.query(f"SELECT MAX({column}) FROM {table}")
+        value = result.result_rows[0][0] if result.result_rows else None
+        if value is None:
+            return None
+        return int(value)
