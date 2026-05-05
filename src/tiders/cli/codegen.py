@@ -200,7 +200,7 @@ def generate(
     else:
         lines.append(f"writer = {writer_code}")
     lines.append("")
-    
+
     # checkpoint
     if checkpoint_code:
         lines.append(f"checkpoint = {checkpoint_code}")
