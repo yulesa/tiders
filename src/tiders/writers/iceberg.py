@@ -5,10 +5,11 @@ Creates Iceberg tables from Arrow schemas and appends data using the
 """
 
 import logging
-from typing import Dict
+from typing import Dict, Optional
 from ..writers.base import DataWriter
 from ..config import IcebergWriterConfig
 import pyarrow as pa
+import pyarrow.compute as pc
 
 logger = logging.getLogger(__name__)
 
@@ -74,3 +75,20 @@ class Writer(DataWriter):
 
         for table_name, arrow_table in data.items():
             await self.write_table(table_name, arrow_table)
+
+    async def read_max_block(self, table: str, column: str) -> Optional[int]:
+        """Return MAX(column) from the Iceberg table, or None if missing or empty."""
+        try:
+            from pyiceberg.exceptions import NoSuchTableError
+        except ImportError:
+            NoSuchTableError = Exception  # type: ignore[assignment,misc]
+
+        try:
+            iceberg_table = self.catalog.load_table(f"{self.namespace}.{table}")
+            arrow_table = iceberg_table.scan(selected_fields=(column,)).to_arrow()
+            if arrow_table.num_rows == 0:
+                return None
+            value = pc.max(arrow_table.column(column)).as_py()
+            return int(value) if value is not None else None
+        except NoSuchTableError:
+            return None

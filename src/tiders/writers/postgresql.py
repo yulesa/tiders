@@ -7,7 +7,7 @@ Automatically creates tables from Arrow schemas and inserts data using the
 import asyncio
 import logging
 from decimal import Decimal
-from typing import Any, Dict, LiteralString, cast as type_cast
+from typing import Any, Dict, LiteralString, Optional, cast as type_cast
 from ..config import PostgresqlWriterConfig
 
 import psycopg.sql as sql
@@ -253,3 +253,27 @@ class Writer(DataWriter):
 
         if self.anchor_table is not None and self.anchor_table in data:
             await self._copy_table(self.anchor_table, data[self.anchor_table])
+
+    async def read_max_block(self, table: str, column: str) -> Optional[int]:
+        """Return MAX(column) from table, or None if the table is missing or empty."""
+        import psycopg.errors
+
+        await self._ensure_connection()
+        assert self.connection is not None
+        qualified = sql.SQL("{}.{}").format(
+            sql.Identifier(self.schema), sql.Identifier(table)
+        )
+        query = sql.SQL("SELECT MAX({}) FROM {}").format(
+            sql.Identifier(column), qualified
+        )
+        try:
+            async with self.connection.cursor() as cur:
+                await cur.execute(query)
+                row = await cur.fetchone()
+            await self.connection.commit()
+        except psycopg.errors.UndefinedTable:
+            await self.connection.rollback()
+            return None
+        if row is None or row[0] is None:
+            return None
+        return int(row[0])

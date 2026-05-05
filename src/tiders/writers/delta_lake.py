@@ -5,19 +5,21 @@ merging enabled.
 """
 
 import logging
-from typing import Dict
+from typing import Dict, Optional
 from copy import deepcopy
 import asyncio
 
 import pyarrow as pa
+import pyarrow.compute as pc
 
 from ..config import DeltaLakeWriterConfig
 from ..writers.base import DataWriter
 
 try:
-    from deltalake import write_deltalake
+    from deltalake import write_deltalake, DeltaTable
 except ImportError:
     write_deltalake = None
+    DeltaTable = None
 
 logger = logging.getLogger(__name__)
 
@@ -79,3 +81,22 @@ class Writer(DataWriter):
         if self.config.anchor_table is not None:
             table_data = data[self.config.anchor_table]
             await self.write_table(self.config.anchor_table, table_data)
+
+    async def read_max_block(self, table: str, column: str) -> Optional[int]:
+        """Return MAX(column) from the Delta table, or None if missing or empty."""
+
+        def _query() -> Optional[int]:
+            try:
+                dt = DeltaTable(  # type: ignore[operator]
+                    f"{self.config.data_uri}/{table}",
+                    storage_options=self.config.storage_options,
+                )
+                arrow_table = dt.to_pyarrow(columns=[column])
+                if arrow_table.num_rows == 0:
+                    return None
+                value = pc.max(arrow_table.column(column)).as_py()
+                return int(value) if value is not None else None
+            except Exception:
+                return None
+
+        return await asyncio.to_thread(_query)

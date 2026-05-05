@@ -61,6 +61,7 @@ def generate(
     steps: list[Any],
     writer: Any,
     table_aliases: Any,
+    checkpoint: Any,
     raw_steps: list[dict[str, Any]],
     env_map: dict[str, str],
     yaml_path: Path,
@@ -77,6 +78,7 @@ def generate(
         raw_steps: Only necessary for 'sql' steps. Used to extract the SQL query that get's hided behind the runner function.
         env_map: Mapping of env var names to resolved values.
         yaml_path: Path to the original YAML file.
+        checkpoint: CheckpointConfig or None.
         contracts: Mapping of contract name to ContractInfo, if any.
 
     Returns:
@@ -97,6 +99,7 @@ def generate(
         steps=steps,
         writer=writer,
         table_aliases=table_aliases,
+        checkpoint=checkpoint,
         has_env_vars=has_env_vars,
         has_pa_types=has_pa,
         has_evm=has_evm,
@@ -160,6 +163,9 @@ def generate(
         to_code(table_aliases, env_map, indent=0) if table_aliases else None
     )
 
+    # --- Serialize checkpoint ---
+    checkpoint_code = to_code(checkpoint, env_map, indent=0) if checkpoint else None
+
     # --- Assemble the file ---
     lines: list[str] = []
 
@@ -216,6 +222,11 @@ def generate(
         lines.append(f"table_aliases = {table_aliases_code}")
         lines.append("")
 
+    # checkpoint
+    if checkpoint_code:
+        lines.append(f"checkpoint = {checkpoint_code}")
+        lines.append("")
+
     # pipeline
     pipeline_args = [
         "    provider=provider,",
@@ -225,6 +236,8 @@ def generate(
     ]
     if table_aliases:
         pipeline_args.append("    table_aliases=table_aliases,")
+    if checkpoint:
+        pipeline_args.append("    checkpoint=checkpoint,")
 
     lines.append("pipeline = Pipeline(")
     lines.extend(pipeline_args)
@@ -247,6 +260,7 @@ def generate(
 # Classes that live in tiders.config
 _TIDERS_CONFIG_CLASSES = {
     "Pipeline",
+    "CheckpointConfig",
     "Step",
     "StepKind",
     "Writer",
@@ -298,6 +312,7 @@ def collect_imports(
     steps: list[Any],
     writer: Any,
     table_aliases: Any,
+    checkpoint: Any,
     has_env_vars: bool,
     has_pa_types: bool,
     has_evm: bool,
@@ -348,6 +363,9 @@ def collect_imports(
 
     # Table_aliases
     _scan_config_names(table_aliases)
+
+    # Checkpoint
+    _scan_config_names(checkpoint)
 
     sorted_config = sorted(config_names)
 
