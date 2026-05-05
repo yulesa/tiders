@@ -90,12 +90,17 @@ class Writer(DataWriter):
                     filesystem=self.config.filesystem,
                     format="parquet",
                 )
-                arrow_table = dataset.to_table(columns=[column])
-                if arrow_table.num_rows == 0:
-                    return None
-                value = pc.max(arrow_table.column(column)).as_py()
-                return int(value) if value is not None else None
             except Exception:
                 return None
+            if column not in dataset.schema.names:
+                raise ValueError(
+                    f"Checkpoint column '{column}' not found in dataset table '{table}'. "
+                    f"Check the 'column' field in your checkpoint config."
+                )
+            arrow_table = dataset.to_table(columns=[column])
+            if arrow_table.num_rows == 0:
+                return None
+            value = pc.max(arrow_table.column(column)).as_py()
+            return int(value) if value is not None else None
 
         return await asyncio.to_thread(_query)

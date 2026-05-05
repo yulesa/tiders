@@ -194,6 +194,18 @@ def generate(
     lines.append(f"provider = {provider_code}")
     lines.append("")
 
+    # writer
+    if isinstance(writer, list):
+        lines.append(f"writer = {writer_code}")
+    else:
+        lines.append(f"writer = {writer_code}")
+    lines.append("")
+    
+    # checkpoint
+    if checkpoint_code:
+        lines.append(f"checkpoint = {checkpoint_code}")
+        lines.append("")
+
     # query
     lines.append(f"query = {query_code}")
     lines.append("")
@@ -210,21 +222,9 @@ def generate(
         lines.append("steps = []")
     lines.append("")
 
-    # writer
-    if isinstance(writer, list):
-        lines.append(f"writer = {writer_code}")
-    else:
-        lines.append(f"writer = {writer_code}")
-    lines.append("")
-
     # table_aliases
     if table_aliases_code:
         lines.append(f"table_aliases = {table_aliases_code}")
-        lines.append("")
-
-    # checkpoint
-    if checkpoint_code:
-        lines.append(f"checkpoint = {checkpoint_code}")
         lines.append("")
 
     # pipeline

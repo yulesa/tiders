@@ -91,12 +91,18 @@ class Writer(DataWriter):
                     f"{self.config.data_uri}/{table}",
                     storage_options=self.config.storage_options,
                 )
-                arrow_table = dt.to_pyarrow(columns=[column])
-                if arrow_table.num_rows == 0:
-                    return None
-                value = pc.max(arrow_table.column(column)).as_py()
-                return int(value) if value is not None else None
             except Exception:
                 return None
+            schema_names = [f.name for f in dt.schema().fields]
+            if column not in schema_names:
+                raise ValueError(
+                    f"Checkpoint column '{column}' not found in Delta table '{table}'. "
+                    f"Check the 'column' field in your checkpoint config."
+                )
+            arrow_table = dt.to_pyarrow_table(columns=[column])
+            if arrow_table.num_rows == 0:
+                return None
+            value = pc.max(arrow_table.column(column)).as_py()
+            return int(value) if value is not None else None
 
         return await asyncio.to_thread(_query)

@@ -21,11 +21,14 @@
 
 import asyncio
 from pathlib import Path
+import pyarrow as pa
 
 from tiders import run_pipeline
 from tiders.config import (
     DuckdbWriterConfig,
+    CheckpointConfig,
     EvmDecodeEventsConfig,
+    CastByTypeConfig,
     HexEncodeConfig,
     Pipeline,
     Step,
@@ -88,7 +91,35 @@ provider = ProviderConfig(
 
 
 # ---------------------------------------------------------------------------
-# 3. Query
+# 3. Writer
+# ---------------------------------------------------------------------------
+# The writer defines where transformed data is stored.
+# DuckDB creates a local database file. Other options include ClickHouse,
+# Delta Lake, Iceberg, PostgreSQL, PyArrow Dataset (Parquet), and CSV.
+
+writer = Writer(
+    kind=WriterKind.DUCKDB,
+    config=DuckdbWriterConfig(path="data/transfers.duckdb"),
+)
+
+
+# ---------------------------------------------------------------------------
+# 4. Checkpoint (Optional)
+# ---------------------------------------------------------------------------
+# The checkpoint tells the pipeline where to resume from in case of interruptions.
+# It reads the last processed block number from the specified table and column in the
+# writer's database once at pipeline start and then overwrite the query's from_block 
+# with that value + 1.
+
+checkpoint = CheckpointConfig(
+    table='transfers',
+    column='block_number',
+    writer_index=0
+)
+
+
+# ---------------------------------------------------------------------------
+# 5. Query
 # ---------------------------------------------------------------------------
 # The query defines what data to fetch: block range, filters, and fields.
 #
@@ -121,7 +152,7 @@ query = Query(
 
 
 # ---------------------------------------------------------------------------
-# 4. Steps
+# 6. Steps
 # ---------------------------------------------------------------------------
 # Steps are transformations applied to the raw data before writing.
 # They run in order, each step's output feeding into the next.
@@ -142,7 +173,15 @@ steps = [
             event_signature=erc20_events["Transfer"]["signature"],
             allow_decode_fail=True,
             output_table="transfers",
-            hstack=False,
+            hstack=True,
+        ),
+    ),
+    Step(
+        kind=StepKind.CAST_BY_TYPE,
+        config=CastByTypeConfig(
+            from_type=pa.decimal256(76, 0),
+            to_type=pa.decimal128(38, 0),
+            allow_cast_fail=True,
         ),
     ),
     Step(
@@ -150,19 +189,6 @@ steps = [
         config=HexEncodeConfig(),
     ),
 ]
-
-
-# ---------------------------------------------------------------------------
-# 5. Writer
-# ---------------------------------------------------------------------------
-# The writer defines where transformed data is stored.
-# DuckDB creates a local database file. Other options include ClickHouse,
-# Delta Lake, Iceberg, PostgreSQL, PyArrow Dataset (Parquet), and CSV.
-
-writer = Writer(
-    kind=WriterKind.DUCKDB,
-    config=DuckdbWriterConfig(path="data/transfers.duckdb"),
-)
 
 
 # ---------------------------------------------------------------------------
@@ -176,6 +202,7 @@ pipeline = Pipeline(
     query=query,
     writer=writer,
     steps=steps,
+    checkpoint=checkpoint,
 )
 
 

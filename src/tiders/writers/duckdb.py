@@ -75,7 +75,7 @@ class Writer(DataWriter):
             )
         self.first_push = True
         logger.warning(
-            "DuckDB does not support Decimal256.\n"
+            "DuckDB does not support Decimal256. "
             "Tiders will try to automatically downcast Decimal256 columns to Decimal128(38, 0). "
             "Any data exceeding 38 digits of precision will cause a failure. "
             "To handle this, add a cast_by_type step before the writer with `allow_cast_fail=True` (overflowing values become null) "

@@ -80,16 +80,19 @@ class Writer(DataWriter):
             file_path = Path(self.config.base_dir) / f"{table}.csv"
             if not file_path.is_file():
                 return None
-            try:
-                arrow_table = pa_csv.read_csv(
-                    str(file_path),
-                    convert_options=pa_csv.ConvertOptions(include_columns=[column]),  # pyright: ignore[reportPrivateImportUsage]
+            schema = pa_csv.open_csv(str(file_path)).schema  # pyright: ignore[reportPrivateImportUsage]
+            if column not in schema.names:
+                raise ValueError(
+                    f"Checkpoint column '{column}' not found in CSV table '{table}'. "
+                    f"Check the 'column' field in your checkpoint config."
                 )
-                if arrow_table.num_rows == 0:
-                    return None
-                value = pc.max(arrow_table.column(column)).as_py()
-                return int(value) if value is not None else None
-            except Exception:
+            arrow_table = pa_csv.read_csv(
+                str(file_path),
+                convert_options=pa_csv.ConvertOptions(include_columns=[column]),  # pyright: ignore[reportPrivateImportUsage]
+            )
+            if arrow_table.num_rows == 0:
                 return None
+            value = pc.max(arrow_table.column(column)).as_py()
+            return int(value) if value is not None else None
 
         return await asyncio.to_thread(_query)

@@ -284,6 +284,12 @@ async def run_pipeline(pipeline: Pipeline, pipeline_name: Optional[str] = None):
         pipeline: The fully configured :class:`Pipeline` object.
         pipeline_name: An optional name used in log messages for identification.
     """
+    if not logging.root.handlers:
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
     logger.info(f"Running pipeline: {pipeline_name}")
     logger.debug(f"Pipeline config: {pipeline}")
 
