@@ -168,7 +168,7 @@ class Writer(DataWriter):
         col_defs = sql.SQL(",\n    ").join(
             sql.SQL("{} {}").format(
                 sql.Identifier(field.name),
-                sql.SQL(pyarrow_type_to_postgresql(field.type)),
+                sql.SQL(pyarrow_type_to_postgresql(field.type)),  # type: ignore[arg-type]
             )
             for field in schema
         )

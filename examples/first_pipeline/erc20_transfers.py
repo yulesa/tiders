@@ -108,14 +108,10 @@ writer = Writer(
 # ---------------------------------------------------------------------------
 # The checkpoint tells the pipeline where to resume from in case of interruptions.
 # It reads the last processed block number from the specified table and column in the
-# writer's database once at pipeline start and then overwrite the query's from_block 
+# writer's database once at pipeline start and then overwrite the query's from_block
 # with that value + 1.
 
-checkpoint = CheckpointConfig(
-    table='transfers',
-    column='block_number',
-    writer_index=0
-)
+checkpoint = CheckpointConfig(table="transfers", column="block_number", writer_index=0)
 
 
 # ---------------------------------------------------------------------------

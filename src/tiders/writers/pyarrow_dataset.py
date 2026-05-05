@@ -100,7 +100,7 @@ class Writer(DataWriter):
             arrow_table = dataset.to_table(columns=[column])
             if arrow_table.num_rows == 0:
                 return None
-            value = pc.max(arrow_table.column(column)).as_py()
+            value = pc.max(arrow_table.column(column)).as_py()  # type: ignore[attr-defined]
             return int(value) if value is not None else None
 
         return await asyncio.to_thread(_query)
