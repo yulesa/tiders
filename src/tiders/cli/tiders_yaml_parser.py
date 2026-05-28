@@ -134,6 +134,7 @@ from tiders.config import (
     AddColumnsConfig,
     CopyColumnsConfig,
     U256ToBinaryConfig,
+    LargeIntColumnsToBinaryConfig,
     Writer,
     WriterKind,
 )
@@ -1078,6 +1079,31 @@ def _parse_step_config(kind: StepKind, raw: dict[str, Any], path: str) -> Any:
                 cfg_path,
             )
         return U256ToBinaryConfig(tables=raw.get("tables"))
+
+    if kind == StepKind.LARGE_INT_COLUMNS_TO_BINARY:
+        valid_keys = {f.name for f in dataclasses.fields(LargeIntColumnsToBinaryConfig)}
+        unknown = set(raw.keys()) - valid_keys
+        if unknown:
+            raise YamlConfigError(
+                f"Unknown large_int_columns_to_binary config keys: {sorted(unknown)}. "
+                f"Valid keys: {sorted(valid_keys)}.",
+                cfg_path,
+            )
+        if "table_name" not in raw:
+            raise YamlConfigError(
+                "large_int_columns_to_binary requires 'config.table_name' (string).",
+                cfg_path,
+            )
+        if "columns" not in raw:
+            raise YamlConfigError(
+                "large_int_columns_to_binary requires 'config.columns' "
+                "(list of column names).",
+                cfg_path,
+            )
+        return LargeIntColumnsToBinaryConfig(
+            table_name=raw["table_name"],
+            columns=list(raw["columns"]),
+        )
 
     if kind == StepKind.SET_CHAIN_ID:
         valid_keys = {f.name for f in dataclasses.fields(SetChainIdConfig)}

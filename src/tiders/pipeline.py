@@ -45,6 +45,7 @@ from .config import (
     Step,
     StepKind,
     U256ToBinaryConfig,
+    LargeIntColumnsToBinaryConfig,
     SvmDecodeInstructionsConfig,
     SvmDecodeLogsConfig,
 )
@@ -148,6 +149,9 @@ def process_steps(
         elif step.kind == StepKind.U256_TO_BINARY:
             assert isinstance(step.config, U256ToBinaryConfig)
             data = step_def.u256_to_binary.execute(data, step.config)
+        elif step.kind == StepKind.LARGE_INT_COLUMNS_TO_BINARY:
+            assert isinstance(step.config, LargeIntColumnsToBinaryConfig)
+            data = step_def.large_int_columns_to_binary.execute(data, step.config)
         elif step.kind == StepKind.BASE58_ENCODE:
             assert isinstance(step.config, Base58EncodeConfig)
             data = step_def.base58_encode.execute(data, step.config)
