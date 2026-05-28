@@ -72,9 +72,7 @@ def execute(
                 arrays.append(batch.column(i))
                 fields.append(batch.schema.field(i))
 
-        out_batches.append(
-            pa.RecordBatch.from_arrays(arrays, schema=pa.schema(fields))
-        )
+        out_batches.append(pa.RecordBatch.from_arrays(arrays, schema=pa.schema(fields)))
 
     data[config.table_name] = pa.Table.from_batches(out_batches)
 

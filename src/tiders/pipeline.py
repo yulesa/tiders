@@ -336,7 +336,11 @@ class _ProgressTracker:
 
     def log_footer(self) -> None:
         elapsed = time.monotonic() - self.t_start
-        last = self.stream.last_block if self.stream.last_block is not None else self.stream.from_block
+        last = (
+            self.stream.last_block
+            if self.stream.last_block is not None
+            else self.stream.from_block
+        )
         done = last - self.stream.from_block + 1
         rate = done / elapsed if elapsed > 0 else 0.0
         logger.info(
