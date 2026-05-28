@@ -7,6 +7,7 @@ to a configured writer backend.
 
 import asyncio
 import logging
+import time
 from dataclasses import asdict
 from enum import Enum
 
@@ -44,6 +45,7 @@ from .config import (
     Step,
     StepKind,
     U256ToBinaryConfig,
+    LargeIntColumnsToBinaryConfig,
     SvmDecodeInstructionsConfig,
     SvmDecodeLogsConfig,
 )
@@ -147,6 +149,9 @@ def process_steps(
         elif step.kind == StepKind.U256_TO_BINARY:
             assert isinstance(step.config, U256ToBinaryConfig)
             data = step_def.u256_to_binary.execute(data, step.config)
+        elif step.kind == StepKind.LARGE_INT_COLUMNS_TO_BINARY:
+            assert isinstance(step.config, LargeIntColumnsToBinaryConfig)
+            data = step_def.large_int_columns_to_binary.execute(data, step.config)
         elif step.kind == StepKind.BASE58_ENCODE:
             assert isinstance(step.config, Base58EncodeConfig)
             data = step_def.base58_encode.execute(data, step.config)
@@ -266,6 +271,84 @@ def merge_data(data: list[Dict[str, pa.Table]]) -> Dict[str, pa.Table]:
     return out
 
 
+def _fmt_dur(s: float) -> str:
+    s = int(s)
+    if s < 60:
+        return f"{s}s"
+    if s < 3600:
+        return f"{s // 60}m{s % 60:02d}s"
+    return f"{s // 3600}h{(s % 3600) // 60:02d}m"
+
+
+class _ProgressTracker:
+    """Per-batch progress logger driven by tiders-core stream accessors."""
+
+    def __init__(self, stream, name: str):
+        self.stream = stream
+        self.name = name
+        self.batch = 0
+        self.prev_last = stream.from_block - 1
+        self.t_start = time.monotonic()
+
+    def log_header(self) -> None:
+        to = self.stream.to_block
+        if to is None:
+            logger.info(
+                f"pipeline '{self.name}' starting | "
+                f"from_block {self.stream.from_block:,} | to_block <head> | tailing"
+            )
+        else:
+            logger.info(
+                f"pipeline '{self.name}' starting | "
+                f"from_block {self.stream.from_block:,} | to_block {to:,} | "
+                f"range {to - self.stream.from_block:,} blocks"
+            )
+
+    def log_batch(self, t_ingest: float, t_steps: float, t_write: float) -> None:
+        self.batch += 1
+        last = self.stream.last_block
+        if last is None:
+            return
+        lo, hi = self.prev_last + 1, last
+        self.prev_last = last
+
+        elapsed = time.monotonic() - self.t_start
+        done = last - self.stream.from_block + 1
+        rate = done / elapsed if elapsed > 0 else 0.0
+
+        to = self.stream.to_block
+        if to is None:
+            progress = f"{last:,} (live, no to_block)"
+            eta = ""
+        else:
+            total = max(1, to - self.stream.from_block + 1)
+            pct = 100.0 * done / total
+            progress = f"{last:,}/{to:,} {pct:5.1f}%"
+            remaining = max(0, to - last)
+            eta_s = remaining / rate if rate > 0 else 0.0
+            eta = f" | eta {_fmt_dur(eta_s)}"
+
+        logger.info(
+            f"batch {self.batch:<3} | blocks {lo:,}–{hi:,} ({hi - lo + 1}) "
+            f"| {progress} | {rate:7,.0f} blk/s{eta} "
+            f"| ingest {t_ingest:.2f}s · steps {t_steps:.2f}s · write {t_write:.2f}s"
+        )
+
+    def log_footer(self) -> None:
+        elapsed = time.monotonic() - self.t_start
+        last = (
+            self.stream.last_block
+            if self.stream.last_block is not None
+            else self.stream.from_block
+        )
+        done = last - self.stream.from_block + 1
+        rate = done / elapsed if elapsed > 0 else 0.0
+        logger.info(
+            f"pipeline '{self.name}' done | {done:,} blocks in {_fmt_dur(elapsed)} "
+            f"| avg {rate:,.0f} blk/s | {self.batch} batches"
+        )
+
+
 async def run_pipeline(pipeline: Pipeline, pipeline_name: Optional[str] = None):
     """Execute a full pipeline: ingest, transform, and write data.
 
@@ -316,9 +399,13 @@ async def run_pipeline(pipeline: Pipeline, pipeline_name: Optional[str] = None):
             )
 
     stream = start_stream(pipeline.provider, pipeline.query)
+    progress = _ProgressTracker(stream, pipeline_name or "<unnamed>")
+    progress.log_header()
 
     while True:
+        t0 = time.monotonic()
         data = await stream.next()
+        t_ingest = time.monotonic() - t0
         if data is None:
             break
 
@@ -335,11 +422,19 @@ async def run_pipeline(pipeline: Pipeline, pipeline_name: Optional[str] = None):
         for table_name, table_batch in data.items():
             tables[table_name] = pa.Table.from_batches([table_batch])
 
+        t1 = time.monotonic()
         processed = await asyncio.to_thread(process_steps, tables, pipeline.steps)
+        t_steps = time.monotonic() - t1
 
         logger.debug("Pushing data to writer")
 
+        t2 = time.monotonic()
         await asyncio.gather(*[w.push_data(processed) for w in writers])
+        t_write = time.monotonic() - t2
+
+        progress.log_batch(t_ingest, t_steps, t_write)
+
+    progress.log_footer()
 
 
 __all__ = ["run_pipeline"]

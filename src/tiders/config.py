@@ -63,6 +63,7 @@ class StepKind(str, Enum):
     CAST_BY_TYPE = "cast_by_type"
     BASE58_ENCODE = "base58_encode"
     U256_TO_BINARY = "u256_to_binary"
+    LARGE_INT_COLUMNS_TO_BINARY = "large_int_columns_to_binary"
     SVM_DECODE_INSTRUCTIONS = "svm_decode_instructions"
     SVM_DECODE_LOGS = "svm_decode_logs"
     JOIN_BLOCK_DATA = "join_block_data"
@@ -372,6 +373,11 @@ class EvmDecodeEventsConfig:
             (default ``"decoded_logs"``).
         hstack: When ``True`` (the default), decoded columns are horizontally
             stacked with the original input columns.
+        large_int_as_binary: When ``True``, signed and unsigned integers wider
+            than 64 bits (``int128``/``int256``/``uint128``/``uint256``) are
+            emitted as 32-byte big-endian ``Binary`` columns (two's-complement
+            for signed) instead of ``Decimal128``/``Decimal256``. Use this to
+            preserve the full unsigned range of ``uint256`` losslessly.
     """
 
     event_signature: str
@@ -380,6 +386,7 @@ class EvmDecodeEventsConfig:
     input_table: str = "logs"
     output_table: str = "decoded_logs"
     hstack: bool = True
+    large_int_as_binary: bool = False
 
 
 @dataclass
@@ -482,6 +489,25 @@ class U256ToBinaryConfig:
     """
 
     tables: Optional[list[str]] = None
+
+
+@dataclass
+class LargeIntColumnsToBinaryConfig:
+    """Configuration for the column-scoped large-integer-to-binary step.
+
+    Converts named scale-0 ``Decimal128`` / ``Decimal256`` columns in a single
+    table to fixed-width big-endian two's-complement ``Binary`` (16 bytes and
+    32 bytes respectively). Matches the wire format produced by
+    ``evm_decode_events`` with ``large_int_as_binary=True``.
+
+    Attributes:
+        table_name: The name of the table whose columns should be converted.
+        columns: List of column names to convert. Each must be a scale-0
+            ``Decimal128`` or ``Decimal256`` column.
+    """
+
+    table_name: str
+    columns: list[str]
 
 
 @dataclass
@@ -935,6 +961,7 @@ class Step:
         | CastConfig
         | HexEncodeConfig
         | U256ToBinaryConfig
+        | LargeIntColumnsToBinaryConfig
         | CastByTypeConfig
         | Base58EncodeConfig
         | SvmDecodeInstructionsConfig
@@ -1020,6 +1047,7 @@ __all__ = [
     "CastConfig",
     "HexEncodeConfig",
     "U256ToBinaryConfig",
+    "LargeIntColumnsToBinaryConfig",
     "CastByTypeConfig",
     "Base58EncodeConfig",
     "SvmDecodeInstructionsConfig",
