@@ -372,6 +372,11 @@ class EvmDecodeEventsConfig:
             (default ``"decoded_logs"``).
         hstack: When ``True`` (the default), decoded columns are horizontally
             stacked with the original input columns.
+        large_int_as_binary: When ``True``, signed and unsigned integers wider
+            than 64 bits (``int128``/``int256``/``uint128``/``uint256``) are
+            emitted as 32-byte big-endian ``Binary`` columns (two's-complement
+            for signed) instead of ``Decimal128``/``Decimal256``. Use this to
+            preserve the full unsigned range of ``uint256`` losslessly.
     """
 
     event_signature: str
@@ -380,6 +385,7 @@ class EvmDecodeEventsConfig:
     input_table: str = "logs"
     output_table: str = "decoded_logs"
     hstack: bool = True
+    large_int_as_binary: bool = False
 
 
 @dataclass

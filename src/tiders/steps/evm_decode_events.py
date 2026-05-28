@@ -41,10 +41,13 @@ def execute(
                 config.allow_decode_fail,
                 config.filter_by_topic0,
                 config.hstack,
+                config.large_int_as_binary,
             )
         )
 
-    decoded_schema = evm_event_signature_to_arrow_schema(config.event_signature)
+    decoded_schema = evm_event_signature_to_arrow_schema(
+        config.event_signature, config.large_int_as_binary
+    )
     if config.hstack:
         schema = pa.schema(list(decoded_schema) + list(input_table.schema))
     else:

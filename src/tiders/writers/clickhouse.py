@@ -117,8 +117,10 @@ class Writer(DataWriter):
     def __init__(self, config: ClickHouseWriterConfig):
         if config.client is not None:
             self.client = config.client
+            self.database = config.client.database
         else:
             self.client = None
+            self.database = config.database
             self._client_config = {
                 "host": config.host,
                 "port": config.port,
@@ -155,7 +157,7 @@ class Writer(DataWriter):
         """Return ``True`` if a table with the given name exists in the current database."""
         assert self.client is not None
         res = await self.client.query(
-            f"SELECT count() > 0 as table_exists FROM system.tables WHERE database = '{self.client.client.database}' AND name = '{table_name}'"
+            f"SELECT count() > 0 as table_exists FROM system.tables WHERE database = '{self.database}' AND name = '{table_name}'"
         )
 
         return bool(res.result_rows[0][0])

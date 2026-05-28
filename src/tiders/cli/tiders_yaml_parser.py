@@ -989,6 +989,7 @@ def _parse_step_config(kind: StepKind, raw: dict[str, Any], path: str) -> Any:
             input_table=raw.get("input_table", "logs"),
             output_table=raw.get("output_table", "decoded_logs"),
             hstack=raw.get("hstack", True),
+            large_int_as_binary=raw.get("large_int_as_binary", False),
         )
 
     if kind == StepKind.CAST_BY_TYPE:
