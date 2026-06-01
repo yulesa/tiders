@@ -29,7 +29,7 @@ Most indexers lock you into a specific platform or database. Tiders is built to 
 
 ## Getting Started
 
-See [getting started section](https://yulesa.github.io/tiders-docs/getting_started.html) of the docs.
+See [getting started section]([https://yulesa.github.io/tiders-docs/getting_started/nocode_quick_start.html) of the docs.
 
 ## Two ways to use tiders
 
