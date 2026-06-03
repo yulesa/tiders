@@ -64,11 +64,13 @@ class Writer(DataWriter):
             )
         if config.connection is not None:
             self.connection = config.connection
+            self._owns_connection = False
         elif config.path is not None:
             from pathlib import Path
 
             Path(config.path).parent.mkdir(parents=True, exist_ok=True)
             self.connection = duckdb.connect(database=config.path)
+            self._owns_connection = True
         else:
             raise ValueError(
                 "DuckdbWriterConfig requires either 'connection' or 'path'."
@@ -90,6 +92,7 @@ class Writer(DataWriter):
         insert directly.
         """
         data = {name: _downcast_decimal256(t) for name, t in data.items()}
+        assert self.connection is not None
         self.connection.begin()
 
         if self.first_push:
@@ -127,10 +130,24 @@ class Writer(DataWriter):
         """Insert data into DuckDB, running the blocking operation in a background thread."""
         await asyncio.to_thread(self.push_data_impl, data)
 
+    async def close(self) -> None:
+        """Close the DuckDB connection if this writer opened it.
+
+        A connection supplied via ``config.connection`` is owned by the caller
+        and left open. A connection opened from ``config.path`` is closed here
+        so its file lock on the database is released instead of being held until
+        the process exits. DuckDB's ``close`` is synchronous, so it runs in a
+        thread to match the async writer interface.
+        """
+        if self._owns_connection and self.connection is not None:
+            await asyncio.to_thread(self.connection.close)
+            self.connection = None
+
     async def read_max_block(self, table: str, column: str) -> Optional[int]:
         """Return MAX(column) from table, or None if the table is missing or empty."""
 
         def _query() -> Optional[int]:
+            assert self.connection is not None
             try:
                 result = self.connection.execute(
                     f"SELECT MAX({column}) FROM {table}"

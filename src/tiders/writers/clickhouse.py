@@ -118,9 +118,11 @@ class Writer(DataWriter):
         if config.client is not None:
             self.client = config.client
             self.database = config.client.database
+            self._owns_client = False
         else:
             self.client = None
             self.database = config.database
+            self._owns_client = True
             self._client_config = {
                 "host": config.host,
                 "port": config.port,
@@ -242,6 +244,18 @@ class Writer(DataWriter):
         if self.anchor_table is not None:
             table_data = data[self.anchor_table]
             await self.client.insert_arrow(self.anchor_table, table_data)
+
+    async def close(self) -> None:
+        """Close the async ClickHouse client if this writer created it.
+
+        A client supplied via ``config.client`` is owned by the caller and is
+        left open. A client created lazily in :meth:`_ensure_client` is closed
+        here so its aiohttp session and connection pool are released instead of
+        leaking until event-loop teardown.
+        """
+        if self._owns_client and self.client is not None:
+            await self.client.close()
+            self.client = None
 
     async def read_max_block(self, table: str, column: str) -> Optional[int]:
         """Return MAX(column) from table, or None if the table is missing or empty."""

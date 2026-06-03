@@ -402,39 +402,50 @@ async def run_pipeline(pipeline: Pipeline, pipeline_name: Optional[str] = None):
     progress = _ProgressTracker(stream, pipeline_name or "<unnamed>")
     progress.log_header()
 
-    while True:
-        t0 = time.monotonic()
-        data = await stream.next()
-        t_ingest = time.monotonic() - t0
-        if data is None:
-            break
+    try:
+        while True:
+            t0 = time.monotonic()
+            data = await stream.next()
+            t_ingest = time.monotonic() - t0
+            if data is None:
+                break
 
-        logger.debug("Received data from ingest")
+            logger.debug("Received data from ingest")
 
-        data = _apply_table_aliases(
-            pipeline.query.kind,
-            data,
-            pipeline.table_aliases,
+            data = _apply_table_aliases(
+                pipeline.query.kind,
+                data,
+                pipeline.table_aliases,
+            )
+
+            tables = {}
+
+            for table_name, table_batch in data.items():
+                tables[table_name] = pa.Table.from_batches([table_batch])
+
+            t1 = time.monotonic()
+            processed = await asyncio.to_thread(process_steps, tables, pipeline.steps)
+            t_steps = time.monotonic() - t1
+
+            logger.debug("Pushing data to writer")
+
+            t2 = time.monotonic()
+            await asyncio.gather(*[w.push_data(processed) for w in writers])
+            t_write = time.monotonic() - t2
+
+            progress.log_batch(t_ingest, t_steps, t_write)
+
+        progress.log_footer()
+    finally:
+        # Release writer-owned resources (e.g. aiohttp sessions/connection
+        # pools) instead of leaking them until event-loop teardown. Runs even
+        # if the loop above raises, so a mid-run failure still cleans up.
+        results = await asyncio.gather(
+            *[w.close() for w in writers], return_exceptions=True
         )
-
-        tables = {}
-
-        for table_name, table_batch in data.items():
-            tables[table_name] = pa.Table.from_batches([table_batch])
-
-        t1 = time.monotonic()
-        processed = await asyncio.to_thread(process_steps, tables, pipeline.steps)
-        t_steps = time.monotonic() - t1
-
-        logger.debug("Pushing data to writer")
-
-        t2 = time.monotonic()
-        await asyncio.gather(*[w.push_data(processed) for w in writers])
-        t_write = time.monotonic() - t2
-
-        progress.log_batch(t_ingest, t_steps, t_write)
-
-    progress.log_footer()
+        for w, result in zip(writers, results):
+            if isinstance(result, Exception):
+                logger.warning(f"error closing writer {type(w).__name__}: {result!r}")
 
 
 __all__ = ["run_pipeline"]
