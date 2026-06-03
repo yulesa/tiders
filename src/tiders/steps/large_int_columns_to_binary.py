@@ -16,6 +16,36 @@ from tiders_core import large_ints_to_binary
 from tiders.config import LargeIntColumnsToBinaryConfig
 
 
+def _convert_batch(batch: pa.RecordBatch, columns: list) -> pa.RecordBatch:
+    """Convert the selected ``columns`` of ``batch`` to binary, in place.
+
+    The selected columns are converted via ``large_ints_to_binary`` and spliced
+    back into their original positions; all other columns are left untouched.
+    """
+    sub_batch = batch.select(columns)
+    converted = large_ints_to_binary(sub_batch)
+
+    converted_by_name = {
+        name: converted.column(i) for i, name in enumerate(converted.schema.names)
+    }
+    converted_fields = {
+        name: converted.schema.field(i)
+        for i, name in enumerate(converted.schema.names)
+    }
+
+    arrays = []
+    fields = []
+    for i, name in enumerate(batch.schema.names):
+        if name in converted_by_name:
+            arrays.append(converted_by_name[name])
+            fields.append(converted_fields[name])
+        else:
+            arrays.append(batch.column(i))
+            fields.append(batch.schema.field(i))
+
+    return pa.RecordBatch.from_arrays(arrays, schema=pa.schema(fields))
+
+
 def execute(
     data: Dict[str, pa.Table], config: LargeIntColumnsToBinaryConfig
 ) -> Dict[str, pa.Table]:
@@ -48,32 +78,18 @@ def execute(
     if not columns:
         return data
 
-    out_batches = []
+    out_batches = [_convert_batch(batch, columns) for batch in table.to_batches()]
 
-    for batch in table.to_batches():
-        sub_batch = batch.select(columns)
-        converted = large_ints_to_binary(sub_batch)
+    # A zero-row table yields no batches, so derive the converted output schema
+    # from an explicit empty batch. This keeps the binary column types
+    # consistent with non-empty tables instead of falling back to the original
+    # Decimal schema (or crashing in pa.Table.from_batches with an empty list).
+    empty_batch = pa.record_batch(
+        [pa.array([], type=field.type) for field in table.schema],
+        schema=table.schema,
+    )
+    out_schema = _convert_batch(empty_batch, columns).schema
 
-        converted_by_name = {
-            name: converted.column(i) for i, name in enumerate(converted.schema.names)
-        }
-        converted_fields = {
-            name: converted.schema.field(i)
-            for i, name in enumerate(converted.schema.names)
-        }
-
-        arrays = []
-        fields = []
-        for i, name in enumerate(batch.schema.names):
-            if name in converted_by_name:
-                arrays.append(converted_by_name[name])
-                fields.append(converted_fields[name])
-            else:
-                arrays.append(batch.column(i))
-                fields.append(batch.schema.field(i))
-
-        out_batches.append(pa.RecordBatch.from_arrays(arrays, schema=pa.schema(fields)))
-
-    data[config.table_name] = pa.Table.from_batches(out_batches)
+    data[config.table_name] = pa.Table.from_batches(out_batches, schema=out_schema)
 
     return data

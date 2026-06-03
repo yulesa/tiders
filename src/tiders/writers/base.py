@@ -43,3 +43,13 @@ class DataWriter(ABC):
             The maximum block number found, or ``None`` if unavailable.
         """
         pass
+
+    async def close(self) -> None:
+        """Release any resources held by the writer (connections, sessions).
+
+        Called once when a pipeline run finishes. The default is a no-op;
+        writers that own network clients should override this to close them so
+        underlying connection pools are released cleanly instead of being
+        reclaimed during interpreter/event-loop teardown.
+        """
+        return None

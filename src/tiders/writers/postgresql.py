@@ -136,8 +136,10 @@ class Writer(DataWriter):
     def __init__(self, config: PostgresqlWriterConfig):
         if config.connection is not None:
             self.connection = config.connection
+            self._owns_connection = False
         else:
             self.connection = None
+            self._owns_connection = True
             self._conninfo = " ".join(
                 [
                     f"host={config.host}",
@@ -233,6 +235,18 @@ class Writer(DataWriter):
 
         if self.anchor_table is not None and self.anchor_table in data:
             await self._copy_table(self.anchor_table, data[self.anchor_table])
+
+    async def close(self) -> None:
+        """Close the async PostgreSQL connection if this writer opened it.
+
+        A connection supplied via ``config.connection`` is owned by the caller
+        and left open. A connection opened lazily in :meth:`_ensure_connection`
+        is closed here so the server-side session is released promptly instead
+        of lingering until garbage collection.
+        """
+        if self._owns_connection and self.connection is not None:
+            await self.connection.close()
+            self.connection = None
 
     async def read_max_block(self, table: str, column: str) -> Optional[int]:
         """Return MAX(column) from table, or None if the table is missing or empty."""
