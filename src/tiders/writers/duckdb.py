@@ -92,6 +92,7 @@ class Writer(DataWriter):
         insert directly.
         """
         data = {name: _downcast_decimal256(t) for name, t in data.items()}
+        assert self.connection is not None
         self.connection.begin()
 
         if self.first_push:
@@ -146,6 +147,7 @@ class Writer(DataWriter):
         """Return MAX(column) from table, or None if the table is missing or empty."""
 
         def _query() -> Optional[int]:
+            assert self.connection is not None
             try:
                 result = self.connection.execute(
                     f"SELECT MAX({column}) FROM {table}"

@@ -445,9 +445,7 @@ async def run_pipeline(pipeline: Pipeline, pipeline_name: Optional[str] = None):
         )
         for w, result in zip(writers, results):
             if isinstance(result, Exception):
-                logger.warning(
-                    f"error closing writer {type(w).__name__}: {result!r}"
-                )
+                logger.warning(f"error closing writer {type(w).__name__}: {result!r}")
 
 
 __all__ = ["run_pipeline"]

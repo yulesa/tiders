@@ -29,8 +29,7 @@ def _convert_batch(batch: pa.RecordBatch, columns: list) -> pa.RecordBatch:
         name: converted.column(i) for i, name in enumerate(converted.schema.names)
     }
     converted_fields = {
-        name: converted.schema.field(i)
-        for i, name in enumerate(converted.schema.names)
+        name: converted.schema.field(i) for i, name in enumerate(converted.schema.names)
     }
 
     arrays = []
