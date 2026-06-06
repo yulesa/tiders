@@ -19,6 +19,10 @@ Tiders is modular. A Tiders pipeline is built from four components:
 | `Steps` | Transformations to apply (decode, cast, encode, custom) |
 | `Writer` | Output destination |
 
+## New Here? Start with the Full Stack Example
+
+**[tiders-stack](https://github.com/yulesa/tiders-stack)** repo is a ready-to-run end-to-end example that wires up a complete Tiders environment from scratch: ingestion pipeline, database, server config, dashboard, and a paying client — all in one repo. If you don't have data or infrastructure yet, **start here**.
+
 ## Why Tiders?
 
 Most indexers lock you into a specific platform or database. Tiders is built to be modular, meaning you can swap parts in and out without breaking your setup:
