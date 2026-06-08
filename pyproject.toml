@@ -21,7 +21,7 @@ dependencies = [
 
 [project.optional-dependencies]
 duckdb = ["duckdb>=1.4.1"]
-clickhouse = ["clickhouse-connect>=1.0"]
+clickhouse = ["clickhouse-connect[async]>=1.0"]
 delta_lake = ["deltalake>=1.2.1"]
 iceberg = ["pyiceberg[sql-sqlite]>=0.10.0"]
 polars = ["polars>=1.34.0"]

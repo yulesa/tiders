@@ -31,3 +31,5 @@ src/tiders*.egg-info/
 examples/eth/.DS_Store
 examples/.DS_Store
 .DS_Store
+.local/
+.vscode/
